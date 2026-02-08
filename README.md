@@ -2,6 +2,12 @@
 
 An [OpenClaw](https://openclaw.ai) plugin that turns a single orchestrator agent into a development team lead managing multiple projects simultaneously.
 
+## Why
+
+[OpenClaw](https://openclaw.ai) is great at giving AI agents the ability to develop software — spawn sub-agents, manage sessions, work with code. But running a real multi-project development pipeline exposes a gap: the orchestration layer between "agent can write code" and "agent reliably manages multiple projects" is brittle. Every task involves 10+ coordinated steps across GitLab labels, session state, model selection, and audit logging. Agents forget steps, corrupt state, null out session IDs they should preserve, or pick the wrong model for the job.
+
+DevClaw fills that gap with guardrails. It gives the orchestrator atomic tools that make it impossible to forget a label transition, lose a session reference, or skip an audit log entry. The complexity of multi-project orchestration moves from agent instructions (that LLMs follow imperfectly) into deterministic code (that runs the same way every time).
+
 ## The idea
 
 You have one AI agent — the orchestrator. It lives in a Telegram group per project. Each project has its own GitLab repo, its own task backlog, and its own pair of sub-agent workers: a **DEV** that writes code and a **QA** that reviews it. The orchestrator decides what to work on, spawns the right worker with the right model, and moves tasks through the pipeline — across all projects at once.
