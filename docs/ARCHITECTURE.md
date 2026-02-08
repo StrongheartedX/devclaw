@@ -5,33 +5,59 @@
 Understanding the OpenClaw model is key to understanding how DevClaw works:
 
 - **Agent** — A configured entity in `openclaw.json`. Has a workspace, model, identity files (SOUL.md, IDENTITY.md), and tool permissions. Persists across restarts.
-- **Session** — A runtime conversation instance. Created when the agent starts or when `sessions_spawn` is called. Each session has its own context window and conversation history.
-- **Sub-agent session** — A session spawned by the orchestrator agent via `sessions_spawn`. Despite the name, it is NOT a separate agent — it's a child session running under the same agent, with its own isolated context. Format: `agent:<parent>:subagent:<uuid>`.
+- **Session** — A runtime conversation instance. Each session has its own context window and conversation history, stored as a `.jsonl` transcript file.
+- **Sub-agent session** — A session created under the orchestrator agent for a specific worker role. NOT a separate agent — it's a child session running under the same agent, with its own isolated context. Format: `agent:<parent>:subagent:<uuid>`.
 
-DevClaw operates at the **orchestrator agent** level. The orchestrator runs a single long-lived session that manages all projects. For each task, it spawns (or reuses) DEV and QA sub-agent sessions. The plugin handles the orchestration logic — label transitions, state management, model selection, audit logging — and returns structured instructions. The orchestrator agent then executes the actual session operations (`sessions_spawn` or `sessions_send`).
+### Session-per-model design
+
+Each project maintains **separate sessions per model per role**. A project's DEV might have a Haiku session, a Sonnet session, and an Opus session — each accumulating its own codebase context over time.
 
 ```
 Orchestrator Agent (configured in openclaw.json)
   └─ Main session (long-lived, handles all projects)
-       ├─ DEV sub-agent session (project A) ← sessions_spawn / sessions_send
-       ├─ QA sub-agent session (project A)  ← sessions_spawn / sessions_send
-       ├─ DEV sub-agent session (project B)
-       └─ QA sub-agent session (project B)
+       │
+       ├─ Project A
+       │    ├─ DEV sessions: { haiku: <uuid>, sonnet: <uuid>, opus: null }
+       │    └─ QA sessions:  { grok: <uuid> }
+       │
+       └─ Project B
+            ├─ DEV sessions: { haiku: null, sonnet: <uuid>, opus: null }
+            └─ QA sessions:  { grok: <uuid> }
 ```
+
+Why per-model instead of switching models on one session:
+- **No model switching overhead** — each session always uses the same model
+- **Accumulated context** — a Haiku session that's done 20 typo fixes knows the project well; a Sonnet session that's done 5 features knows it differently
+- **No cross-model confusion** — conversation history stays with the model that generated it
+- **Deterministic reuse** — model selection directly maps to a session key, no patching needed
+
+### Plugin-controlled session lifecycle
+
+DevClaw controls the full session lifecycle — the orchestrator agent does NOT call `sessions_spawn` or `sessions_send` directly. Instead, the plugin uses the OpenClaw Gateway RPC and CLI to manage sessions deterministically:
+
+```
+Plugin control path:
+  1. sessions.patch (Gateway RPC) → create session entry + set model
+  2. openclaw agent (CLI)         → send message to session
+```
+
+This moves session management from brittle agent instructions into deterministic plugin code.
 
 ## System overview
 
 ```mermaid
 graph TB
-    subgraph "External"
-        GL[GitLab]
-        TG[Telegram]
+    subgraph "Telegram"
+        H[Human]
+        TG[Group Chat]
     end
 
     subgraph "OpenClaw Runtime"
-        AGENT[Orchestrator Agent]
-        DEV[DEV sub-agent session]
-        QA[QA sub-agent session]
+        MS[Main Session<br/>orchestrator agent]
+        DEV_H[DEV session<br/>haiku]
+        DEV_S[DEV session<br/>sonnet]
+        DEV_O[DEV session<br/>opus]
+        QA_G[QA session<br/>grok]
     end
 
     subgraph "DevClaw Plugin"
@@ -39,29 +65,37 @@ graph TB
         TC[task_complete]
         QS[queue_status]
         SH[session_health]
-        MS[Model Selector]
+        MS_SEL[Model Selector]
         PJ[projects.json]
         AL[audit.log]
     end
 
-    subgraph "Git"
-        REPO[Project Repository]
+    subgraph "OpenClaw Gateway"
+        SP[sessions.patch]
+        SL[sessions.list]
+        CLI[openclaw agent CLI]
     end
 
-    TG -->|delivers messages| AGENT
-    AGENT -->|announces to group| TG
+    subgraph "External"
+        GL[GitLab]
+        REPO[Git Repository]
+    end
 
-    AGENT -->|creates/updates issues| GL
+    H -->|messages| TG
+    TG -->|delivers| MS
+    MS -->|announces| TG
 
-    AGENT -->|calls| TP
-    AGENT -->|calls| TC
-    AGENT -->|calls| QS
-    AGENT -->|calls| SH
+    MS -->|calls| TP
+    MS -->|calls| TC
+    MS -->|calls| QS
+    MS -->|calls| SH
 
-    TP -->|selects model| MS
+    TP -->|selects model| MS_SEL
     TP -->|transitions labels| GL
     TP -->|reads/writes| PJ
     TP -->|appends| AL
+    TP -->|creates/patches session| SP
+    TP -->|sends task to session| CLI
 
     TC -->|transitions labels| GL
     TC -->|closes/reopens| GL
@@ -74,18 +108,94 @@ graph TB
     QS -->|appends| AL
 
     SH -->|reads/writes| PJ
+    SH -->|checks sessions| SL
     SH -->|reverts labels| GL
     SH -->|appends| AL
 
-    AGENT -->|sessions_spawn| DEV
-    AGENT -->|sessions_spawn| QA
-    AGENT -->|sessions_send| DEV
-    AGENT -->|sessions_send| QA
+    CLI -->|runs agent turn| DEV_H
+    CLI -->|runs agent turn| DEV_S
+    CLI -->|runs agent turn| DEV_O
+    CLI -->|runs agent turn| QA_G
 
-    DEV -->|writes code, creates MRs| REPO
-    DEV -->|creates/updates issues| GL
-    QA -->|reviews code, tests| REPO
+    DEV_H -->|writes code, creates MRs| REPO
+    DEV_S -->|writes code, creates MRs| REPO
+    DEV_O -->|writes code, creates MRs| REPO
+    QA_G -->|reviews code, tests| REPO
 ```
+
+## End-to-end flow: human to sub-agent
+
+This diagram shows the complete path from a human message in Telegram through to a sub-agent session working on code:
+
+```mermaid
+sequenceDiagram
+    participant H as Human (Telegram)
+    participant TG as Telegram Channel
+    participant MS as Main Session<br/>(orchestrator)
+    participant DC as DevClaw Plugin
+    participant GW as Gateway RPC
+    participant CLI as openclaw agent CLI
+    participant DEV as DEV Sub-agent<br/>Session (sonnet)
+    participant GL as GitLab
+
+    Note over H,GL: Issue exists in queue (To Do)
+
+    H->>TG: "check status" (or heartbeat triggers)
+    TG->>MS: delivers message
+    MS->>DC: queue_status()
+    DC->>GL: glab issue list --label "To Do"
+    DC-->>MS: { toDo: [#42], dev: idle }
+
+    Note over MS: Decides to pick up #42 for DEV
+
+    MS->>DC: task_pickup({ issueId: 42, role: "dev", ... })
+    DC->>DC: selectModel → "sonnet"
+    DC->>DC: lookup dev.sessions.sonnet → null (first time)
+    DC->>DC: generate new UUID
+    DC->>GL: glab issue update 42 --unlabel "To Do" --label "Doing"
+    DC->>DC: update projects.json (active, issueId, model)
+    DC->>GW: sessions.patch({ key: "...subagent:<uuid>", model: "anthropic/claude-sonnet-4-5" })
+    GW-->>DC: { ok: true }
+    DC->>CLI: openclaw agent --agent orchestrator --session-id <uuid> --message "Build login page for #42..."
+    CLI->>DEV: creates session, sends task
+    DC->>DC: store UUID in dev.sessions.sonnet
+    DC->>DC: append audit.log
+    DC-->>MS: { success: true, announcement: "🔧 Spawning DEV (sonnet) for #42" }
+
+    MS->>TG: "🔧 Spawning DEV (sonnet) for #42: Add login page"
+    TG->>H: sees announcement
+
+    Note over DEV: Works autonomously — reads code, writes code, creates MR
+
+    DEV-->>MS: "done, MR merged"
+    MS->>DC: task_complete({ role: "dev", result: "done", ... })
+    DC->>GL: glab issue update 42 --unlabel "Doing" --label "To Test"
+    DC->>DC: deactivate worker (sessions preserved)
+    DC-->>MS: { announcement: "✅ DEV done #42" }
+
+    MS->>TG: "✅ DEV done #42 — moved to QA queue"
+    TG->>H: sees announcement
+```
+
+On the **next DEV task** for this project that also selects Sonnet:
+
+```mermaid
+sequenceDiagram
+    participant MS as Main Session
+    participant DC as DevClaw Plugin
+    participant CLI as openclaw agent CLI
+    participant DEV as DEV Session<br/>(sonnet, existing)
+
+    MS->>DC: task_pickup({ issueId: 57, role: "dev", ... })
+    DC->>DC: selectModel → "sonnet"
+    DC->>DC: lookup dev.sessions.sonnet → <uuid> (exists!)
+    Note over DC: No sessions.patch needed — model already set
+    DC->>CLI: openclaw agent --session-id <uuid> --message "Fix validation for #57..."
+    CLI->>DEV: sends to existing session (has full codebase context)
+    DC-->>MS: { success: true, announcement: "⚡ Sending DEV (sonnet) for #57" }
+```
+
+Session reuse saves ~50K tokens per task by not re-reading the codebase.
 
 ## Complete ticket lifecycle
 
@@ -132,6 +242,8 @@ sequenceDiagram
 
 ### Phase 3: DEV pickup
 
+The plugin handles everything — model selection, session management, label transition, state update, and dispatching the task to the correct sub-agent session.
+
 ```mermaid
 sequenceDiagram
     participant A as Orchestrator
@@ -139,32 +251,37 @@ sequenceDiagram
     participant GL as GitLab
     participant MS as Model Selector
     participant PJ as projects.json
+    participant GW as Gateway
+    participant CLI as openclaw agent
     participant AL as audit.log
-    participant TG as Telegram
 
     A->>TP: task_pickup({ issueId: 42, role: "dev", projectGroupId: "-123" })
     TP->>PJ: readProjects()
-    PJ-->>TP: { dev: { active: false, sessionId: "existing-session" } }
     TP->>GL: glab issue view 42 --output json
     GL-->>TP: { title: "Add login page", labels: ["To Do"] }
     TP->>TP: Verify label is "To Do" ✓
     TP->>MS: selectModel("Add login page", description, "dev")
-    MS-->>TP: { alias: "sonnet", reason: "Standard dev task" }
-    TP->>TP: Existing session found → sessionAction: "send"
+    MS-->>TP: { alias: "sonnet" }
+    TP->>PJ: lookup dev.sessions.sonnet
+    alt Session exists
+        TP->>CLI: openclaw agent --session-id <existing> --message "task..."
+    else New session
+        TP->>GW: sessions.patch({ key: new-uuid, model: "sonnet" })
+        TP->>CLI: openclaw agent --session-id <new-uuid> --message "task..."
+        TP->>PJ: store UUID in dev.sessions.sonnet
+    end
     TP->>GL: glab issue update 42 --unlabel "To Do" --label "Doing"
-    TP->>PJ: activateWorker(-123, dev, { issueId: "42", model: "sonnet" })
-    TP->>AL: append { event: "task_pickup", ... }
-    TP->>AL: append { event: "model_selection", ... }
-    TP-->>A: { sessionAction: "send", sessionId: "existing-session", announcement: "..." }
-    A->>TG: "🔧 Sending DEV (sonnet) for #42: Add login page"
-    A->>A: sessions_send(sessionId, task description)
+    TP->>PJ: activateWorker (active=true, issueId=42, model=sonnet)
+    TP->>AL: append task_pickup + model_selection
+    TP-->>A: { success: true, announcement: "🔧 ..." }
 ```
 
 **Writes:**
 - `GitLab`: label "To Do" → "Doing"
-- `projects.json`: dev.active=true, dev.issueId="42", dev.model="sonnet"
+- `projects.json`: dev.active=true, dev.issueId="42", dev.model="sonnet", dev.sessions.sonnet=uuid
 - `audit.log`: 2 entries (task_pickup, model_selection)
-- `Telegram`: announcement message
+- `Gateway`: session entry created/reused
+- `Sub-agent`: task message delivered
 
 ### Phase 4: DEV works
 
@@ -185,26 +302,23 @@ sequenceDiagram
     participant PJ as projects.json
     participant AL as audit.log
     participant REPO as Git Repo
-    participant TG as Telegram
 
     A->>TC: task_complete({ role: "dev", result: "done", projectGroupId: "-123", summary: "Login page with OAuth" })
     TC->>PJ: readProjects()
-    PJ-->>TC: { dev: { active: true, issueId: "42", sessionId: "existing-session" } }
+    PJ-->>TC: { dev: { active: true, issueId: "42" } }
     TC->>REPO: git pull
     TC->>PJ: deactivateWorker(-123, dev)
-    Note over PJ: active→false, issueId→null<br/>sessionId PRESERVED<br/>model PRESERVED
+    Note over PJ: active→false, issueId→null<br/>sessions map PRESERVED
     TC->>GL: glab issue update 42 --unlabel "Doing" --label "To Test"
     TC->>AL: append { event: "task_complete", role: "dev", result: "done" }
     TC-->>A: { announcement: "✅ DEV done #42 — Login page with OAuth. Moved to QA queue." }
-    A->>TG: "✅ DEV done #42 — Login page with OAuth. Moved to QA queue."
 ```
 
 **Writes:**
 - `Git repo`: pulled latest (has DEV's merged code)
-- `projects.json`: dev.active=false, dev.issueId=null (sessionId + model preserved for reuse)
+- `projects.json`: dev.active=false, dev.issueId=null (sessions map preserved for reuse)
 - `GitLab`: label "Doing" → "To Test"
 - `audit.log`: 1 entry (task_complete)
-- `Telegram`: announcement
 
 ### Phase 6: QA pickup
 
@@ -221,7 +335,6 @@ sequenceDiagram
     participant GL as GitLab
     participant PJ as projects.json
     participant AL as audit.log
-    participant TG as Telegram
 
     A->>TC: task_complete({ role: "qa", result: "pass", projectGroupId: "-123" })
     TC->>PJ: deactivateWorker(-123, qa)
@@ -229,7 +342,6 @@ sequenceDiagram
     TC->>GL: glab issue close 42
     TC->>AL: append { event: "task_complete", role: "qa", result: "pass" }
     TC-->>A: { announcement: "🎉 QA PASS #42. Issue closed." }
-    A->>TG: "🎉 QA PASS #42. Issue closed."
 ```
 
 **Ticket complete.** Issue closed, label "Done".
@@ -244,18 +356,13 @@ sequenceDiagram
     participant MS as Model Selector
     participant PJ as projects.json
     participant AL as audit.log
-    participant TG as Telegram
 
     A->>TC: task_complete({ role: "qa", result: "fail", projectGroupId: "-123", summary: "OAuth redirect broken" })
     TC->>PJ: deactivateWorker(-123, qa)
     TC->>GL: glab issue update 42 --unlabel "Testing" --label "To Improve"
     TC->>GL: glab issue reopen 42
-    TC->>GL: glab issue view 42 --output json
-    TC->>MS: selectModel(title, description, "dev")
-    MS-->>TC: { alias: "sonnet" }
     TC->>AL: append { event: "task_complete", role: "qa", result: "fail" }
-    TC-->>A: { announcement: "❌ QA FAIL #42 — OAuth redirect broken. Sent back to DEV.", devFixInstructions: "Send QA feedback to existing DEV session..." }
-    A->>TG: "❌ QA FAIL #42 — OAuth redirect broken. Sent back to DEV."
+    TC-->>A: { announcement: "❌ QA FAIL #42 — OAuth redirect broken. Sent back to DEV." }
 ```
 
 **Cycle restarts:** Issue goes to "To Improve". Next heartbeat, DEV picks it up again (Phase 3, but from "To Improve" instead of "To Do").
@@ -278,21 +385,21 @@ sequenceDiagram
     participant SH as session_health
     participant QS as queue_status
     participant TP as task_pickup
-    participant SL as sessions_list
+    participant GW as Gateway
 
     Note over A: Heartbeat triggered
 
-    A->>SL: sessions_list
-    SL-->>A: [alive_session_1, alive_session_2]
-
-    A->>SH: session_health({ activeSessions: [...], autoFix: true })
-    SH-->>A: { healthy: false, issues: [{ type: "zombie_session", fixed: true }] }
+    A->>SH: session_health({ autoFix: true })
+    SH->>GW: sessions.list
+    GW-->>SH: [alive sessions]
+    SH-->>A: { healthy: true }
 
     A->>QS: queue_status()
     QS-->>A: { projects: [{ dev: idle, queue: { toDo: [#43], toTest: [#44] } }] }
 
     Note over A: DEV idle + To Do #43 → pick up
     A->>TP: task_pickup({ issueId: 43, role: "dev", ... })
+    Note over TP: Plugin handles everything:<br/>model select → session lookup →<br/>gateway patch → CLI send →<br/>label transition → state update
 
     Note over A: QA idle + To Test #44 → pick up
     A->>TP: task_pickup({ issueId: 44, role: "qa", ... })
@@ -316,29 +423,34 @@ Every piece of data and where it lives:
 ┌─────────────────────────────────────────────────────────────────┐
 │ DevClaw Plugin (orchestration logic)                            │
 │                                                                 │
-│  task_pickup    → label transition + state update + model select│
+│  task_pickup    → model select + session manage + label + state │
 │  task_complete  → label transition + state update + git pull    │
 │  queue_status   → read labels + read state                     │
-│  session_health → read state + fix zombies                     │
+│  session_health → check sessions via gateway + fix zombies     │
 └─────────────────────────────────────────────────────────────────┘
-        ↕ atomic file I/O
-┌─────────────────────────────────────────────────────────────────┐
-│ memory/projects.json (worker state)                             │
-│                                                                 │
-│  Per project (keyed by Telegram group ID):                      │
-│    dev: { active, sessionId, issueId, model, startTime }        │
-│    qa:  { active, sessionId, issueId, model, startTime }        │
-│                                                                 │
-│  Preserved across tasks: sessionId, model, startTime            │
-│  Cleared on complete: active → false, issueId → null            │
-└─────────────────────────────────────────────────────────────────┘
+        ↕ atomic file I/O          ↕ Gateway RPC / CLI
+┌────────────────────────────────┐ ┌──────────────────────────────┐
+│ memory/projects.json           │ │ OpenClaw Gateway             │
+│                                │ │                              │
+│  Per project:                  │ │  sessions.patch → set model  │
+│    dev:                        │ │  sessions.list  → list alive │
+│      active, issueId, model    │ │  sessions.delete → cleanup   │
+│      sessions:                 │ │                              │
+│        haiku: <uuid>           │ │  openclaw agent CLI          │
+│        sonnet: <uuid>          │ │  → send message to session   │
+│        opus: <uuid>            │ │  → creates session if new    │
+│    qa:                         │ │                              │
+│      active, issueId, model    │ └──────────────────────────────┘
+│      sessions:                 │
+│        grok: <uuid>            │
+└────────────────────────────────┘
         ↕ append-only
 ┌─────────────────────────────────────────────────────────────────┐
 │ memory/audit.log (observability)                                │
 │                                                                 │
 │  NDJSON, one line per event:                                    │
 │  task_pickup, task_complete, model_selection,                   │
-│  queue_status, health_check                                     │
+│  queue_status, health_check, session_spawn, session_reuse       │
 │                                                                 │
 │  Query with: cat audit.log | jq 'select(.event=="task_pickup")' │
 └─────────────────────────────────────────────────────────────────┘
@@ -348,6 +460,7 @@ Every piece of data and where it lives:
 │                                                                 │
 │  Per group chat:                                                │
 │    "🔧 Spawning DEV (sonnet) for #42: Add login page"           │
+│    "⚡ Sending DEV (sonnet) for #57: Fix validation"            │
 │    "✅ DEV done #42 — Login page with OAuth. Moved to QA queue."│
 │    "🎉 QA PASS #42. Issue closed."                              │
 │    "❌ QA FAIL #42 — OAuth redirect broken. Sent back to DEV."  │
@@ -356,8 +469,8 @@ Every piece of data and where it lives:
 ┌─────────────────────────────────────────────────────────────────┐
 │ Git Repository (codebase)                                       │
 │                                                                 │
-│  DEV sub-agent session: reads code, writes code, creates MRs    │
-│  QA sub-agent session: reads code, runs tests, reviews MRs      │
+│  DEV sub-agent sessions: read code, write code, create MRs      │
+│  QA sub-agent sessions: read code, run tests, review MRs        │
 │  task_complete (DEV done): git pull to sync latest               │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -368,19 +481,20 @@ What DevClaw controls vs. what it delegates:
 
 ```mermaid
 graph LR
-    subgraph "DevClaw controls"
+    subgraph "DevClaw controls (deterministic)"
         L[Label transitions]
         S[Worker state]
         M[Model selection]
+        SS[Session spawn/send]
         A[Audit logging]
         Z[Zombie cleanup]
     end
 
-    subgraph "Orchestrator handles (with DevClaw instructions)"
-        SP[Session spawn/send]
+    subgraph "Orchestrator handles"
         MSG[Telegram announcements]
         HB[Heartbeat scheduling]
         IC[Issue creation via glab]
+        DEC[Task prioritization]
     end
 
     subgraph "Sub-agent sessions handle"
@@ -399,8 +513,9 @@ graph LR
 
 | Failure | Detection | Recovery |
 |---|---|---|
-| Session dies mid-task | `session_health` detects zombie (active=true but session not in sessions_list) | `autoFix`: reverts label, clears active state. Next heartbeat picks up task again. |
+| Session dies mid-task | `session_health` checks via `sessions.list` gateway RPC | `autoFix`: reverts label, clears active state, removes dead session from sessions map. Next heartbeat picks up task again (spawns fresh session for that model). |
 | glab command fails | Tool throws error, returns to agent | Agent retries or reports to Telegram group |
+| Gateway RPC fails | `sessions.patch` or `openclaw agent` returns error | Tool returns error to orchestrator with details. Agent can retry or report. |
 | projects.json corrupted | Tool can't parse JSON | Manual fix needed. Atomic writes (temp+rename) prevent partial writes. |
 | Label out of sync | `task_pickup` verifies label before transitioning | Throws error if label doesn't match expected state. Agent reports mismatch. |
 | Worker already active | `task_pickup` checks `active` flag | Throws error: "DEV worker already active on project". Must complete current task first. |
@@ -415,4 +530,5 @@ graph LR
 | Agent config | `~/.openclaw/openclaw.json` | Agent definition + tool permissions |
 | Worker state | `~/.openclaw/workspace-<agent>/memory/projects.json` | Per-project DEV/QA state |
 | Audit log | `~/.openclaw/workspace-<agent>/memory/audit.log` | NDJSON event log |
+| Session transcripts | `~/.openclaw/agents/<agent>/sessions/<uuid>.jsonl` | Conversation history per session |
 | Git repos | `~/git/<project>/` | Project source code |
