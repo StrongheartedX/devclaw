@@ -33,15 +33,34 @@ Why per-model instead of switching models on one session:
 
 ### Plugin-controlled session lifecycle
 
-DevClaw controls the full session lifecycle — the orchestrator agent does NOT call `sessions_spawn` or `sessions_send` directly. Instead, the plugin uses the OpenClaw Gateway RPC and CLI to manage sessions deterministically:
+DevClaw controls the **full** session lifecycle end-to-end. The orchestrator agent never calls `sessions_spawn` or `sessions_send` — the plugin handles session creation and task dispatch internally using the OpenClaw CLI:
 
 ```
-Plugin control path:
-  1. sessions.patch (Gateway RPC) → create session entry + set model
-  2. openclaw agent (CLI)         → send message to session
+Plugin dispatch (inside task_pickup):
+  1. Select model, look up session, decide spawn vs send
+  2. New session:  openclaw gateway call sessions.patch → create entry + set model
+                   openclaw agent --session-id <key> --message "task..."
+  3. Existing:     openclaw agent --session-id <key> --message "task..."
+  4. Return result to orchestrator (announcement text, no session instructions)
 ```
 
-This moves session management from brittle agent instructions into deterministic plugin code.
+The agent's only job after `task_pickup` returns is to post the announcement to Telegram. Everything else — model selection, session creation, task dispatch, state update, audit logging — is deterministic plugin code.
+
+**Why this matters:** Previously the plugin returned instructions like `{ sessionAction: "spawn", model: "sonnet" }` and the agent had to correctly call `sessions_spawn` with the right params. This was the fragile handoff point where agents would forget `cleanup: "keep"`, use wrong models, or corrupt session state. Moving dispatch into the plugin eliminates that entire class of errors.
+
+**Session persistence:** Sessions created via `sessions.patch` persist indefinitely (no auto-cleanup). The plugin manages lifecycle explicitly through `session_health`.
+
+**What we trade off vs. registered sub-agents:**
+
+| Feature | Sub-agent system | Plugin-controlled | DevClaw equivalent |
+|---|---|---|---|
+| Auto-reporting | Sub-agent reports to parent | No | Heartbeat polls for completion |
+| Concurrency control | `maxConcurrent` | No | `task_pickup` checks `active` flag |
+| Lifecycle tracking | Parent-child registry | No | `projects.json` tracks all sessions |
+| Timeout detection | `runTimeoutSeconds` | No | `session_health` flags stale >2h |
+| Cleanup | Auto-archive | No | `session_health` manual cleanup |
+
+DevClaw provides equivalent guardrails for everything except auto-reporting, which the heartbeat handles.
 
 ## System overview
 
@@ -54,6 +73,8 @@ graph TB
 
     subgraph "OpenClaw Runtime"
         MS[Main Session<br/>orchestrator agent]
+        GW[Gateway RPC<br/>sessions.patch / sessions.list]
+        CLI[openclaw agent CLI]
         DEV_H[DEV session<br/>haiku]
         DEV_S[DEV session<br/>sonnet]
         DEV_O[DEV session<br/>opus]
@@ -68,12 +89,6 @@ graph TB
         MS_SEL[Model Selector]
         PJ[projects.json]
         AL[audit.log]
-    end
-
-    subgraph "OpenClaw Gateway"
-        SP[sessions.patch]
-        SL[sessions.list]
-        CLI[openclaw agent CLI]
     end
 
     subgraph "External"
@@ -94,8 +109,8 @@ graph TB
     TP -->|transitions labels| GL
     TP -->|reads/writes| PJ
     TP -->|appends| AL
-    TP -->|creates/patches session| SP
-    TP -->|sends task to session| CLI
+    TP -->|creates session| GW
+    TP -->|dispatches task| CLI
 
     TC -->|transitions labels| GL
     TC -->|closes/reopens| GL
@@ -108,14 +123,14 @@ graph TB
     QS -->|appends| AL
 
     SH -->|reads/writes| PJ
-    SH -->|checks sessions| SL
+    SH -->|checks sessions| GW
     SH -->|reverts labels| GL
     SH -->|appends| AL
 
-    CLI -->|runs agent turn| DEV_H
-    CLI -->|runs agent turn| DEV_S
-    CLI -->|runs agent turn| DEV_O
-    CLI -->|runs agent turn| QA_G
+    CLI -->|sends task| DEV_H
+    CLI -->|sends task| DEV_S
+    CLI -->|sends task| DEV_O
+    CLI -->|sends task| QA_G
 
     DEV_H -->|writes code, creates MRs| REPO
     DEV_S -->|writes code, creates MRs| REPO
@@ -135,7 +150,7 @@ sequenceDiagram
     participant DC as DevClaw Plugin
     participant GW as Gateway RPC
     participant CLI as openclaw agent CLI
-    participant DEV as DEV Sub-agent<br/>Session (sonnet)
+    participant DEV as DEV Session<br/>(sonnet)
     participant GL as GitLab
 
     Note over H,GL: Issue exists in queue (To Do)
@@ -151,23 +166,19 @@ sequenceDiagram
     MS->>DC: task_pickup({ issueId: 42, role: "dev", ... })
     DC->>DC: selectModel → "sonnet"
     DC->>DC: lookup dev.sessions.sonnet → null (first time)
-    DC->>DC: generate new UUID
     DC->>GL: glab issue update 42 --unlabel "To Do" --label "Doing"
-    DC->>DC: update projects.json (active, issueId, model)
-    DC->>GW: sessions.patch({ key: "...subagent:<uuid>", model: "anthropic/claude-sonnet-4-5" })
-    GW-->>DC: { ok: true }
-    DC->>CLI: openclaw agent --agent orchestrator --session-id <uuid> --message "Build login page for #42..."
-    CLI->>DEV: creates session, sends task
-    DC->>DC: store UUID in dev.sessions.sonnet
-    DC->>DC: append audit.log
-    DC-->>MS: { success: true, announcement: "🔧 Spawning DEV (sonnet) for #42" }
+    DC->>GW: sessions.patch({ key: new-session-key, model: "sonnet" })
+    DC->>CLI: openclaw agent --session-id <key> --message "Build login page for #42..."
+    CLI->>DEV: creates session, delivers task
+    DC->>DC: store session key in projects.json + append audit.log
+    DC-->>MS: { success: true, announcement: "🔧 DEV (sonnet) picking up #42" }
 
-    MS->>TG: "🔧 Spawning DEV (sonnet) for #42: Add login page"
+    MS->>TG: "🔧 DEV (sonnet) picking up #42: Add login page"
     TG->>H: sees announcement
 
     Note over DEV: Works autonomously — reads code, writes code, creates MR
+    Note over MS: Heartbeat detects DEV session idle → triggers task_complete
 
-    DEV-->>MS: "done, MR merged"
     MS->>DC: task_complete({ role: "dev", result: "done", ... })
     DC->>GL: glab issue update 42 --unlabel "Doing" --label "To Test"
     DC->>DC: deactivate worker (sessions preserved)
@@ -188,11 +199,11 @@ sequenceDiagram
 
     MS->>DC: task_pickup({ issueId: 57, role: "dev", ... })
     DC->>DC: selectModel → "sonnet"
-    DC->>DC: lookup dev.sessions.sonnet → <uuid> (exists!)
-    Note over DC: No sessions.patch needed — model already set
-    DC->>CLI: openclaw agent --session-id <uuid> --message "Fix validation for #57..."
-    CLI->>DEV: sends to existing session (has full codebase context)
-    DC-->>MS: { success: true, announcement: "⚡ Sending DEV (sonnet) for #57" }
+    DC->>DC: lookup dev.sessions.sonnet → existing key!
+    Note over DC: No sessions.patch needed — session already exists
+    DC->>CLI: openclaw agent --session-id <key> --message "Fix validation for #57..."
+    CLI->>DEV: delivers task to existing session (has full codebase context)
+    DC-->>MS: { success: true, announcement: "⚡ DEV (sonnet) picking up #57" }
 ```
 
 Session reuse saves ~50K tokens per task by not re-reading the codebase.
@@ -242,7 +253,7 @@ sequenceDiagram
 
 ### Phase 3: DEV pickup
 
-The plugin handles everything — model selection, session management, label transition, state update, and dispatching the task to the correct sub-agent session.
+The plugin handles everything end-to-end — model selection, session lookup, label transition, state update, **and** task dispatch to the worker session. The agent's only job after is to post the announcement.
 
 ```mermaid
 sequenceDiagram
@@ -250,9 +261,9 @@ sequenceDiagram
     participant TP as task_pickup
     participant GL as GitLab
     participant MS as Model Selector
+    participant GW as Gateway RPC
+    participant CLI as openclaw agent CLI
     participant PJ as projects.json
-    participant GW as Gateway
-    participant CLI as openclaw agent
     participant AL as audit.log
 
     A->>TP: task_pickup({ issueId: 42, role: "dev", projectGroupId: "-123" })
@@ -263,25 +274,21 @@ sequenceDiagram
     TP->>MS: selectModel("Add login page", description, "dev")
     MS-->>TP: { alias: "sonnet" }
     TP->>PJ: lookup dev.sessions.sonnet
-    alt Session exists
-        TP->>CLI: openclaw agent --session-id <existing> --message "task..."
-    else New session
-        TP->>GW: sessions.patch({ key: new-uuid, model: "sonnet" })
-        TP->>CLI: openclaw agent --session-id <new-uuid> --message "task..."
-        TP->>PJ: store UUID in dev.sessions.sonnet
-    end
     TP->>GL: glab issue update 42 --unlabel "To Do" --label "Doing"
-    TP->>PJ: activateWorker (active=true, issueId=42, model=sonnet)
+    alt New session
+        TP->>GW: sessions.patch({ key: new-key, model: "sonnet" })
+    end
+    TP->>CLI: openclaw agent --session-id <key> --message "task..."
+    TP->>PJ: activateWorker + store session key
     TP->>AL: append task_pickup + model_selection
     TP-->>A: { success: true, announcement: "🔧 ..." }
 ```
 
 **Writes:**
 - `GitLab`: label "To Do" → "Doing"
-- `projects.json`: dev.active=true, dev.issueId="42", dev.model="sonnet", dev.sessions.sonnet=uuid
+- `projects.json`: dev.active=true, dev.issueId="42", dev.model="sonnet", dev.sessions.sonnet=key
 - `audit.log`: 2 entries (task_pickup, model_selection)
-- `Gateway`: session entry created/reused
-- `Sub-agent`: task message delivered
+- `Session`: task message delivered to worker session via CLI
 
 ### Phase 4: DEV works
 
@@ -385,13 +392,10 @@ sequenceDiagram
     participant SH as session_health
     participant QS as queue_status
     participant TP as task_pickup
-    participant GW as Gateway
-
     Note over A: Heartbeat triggered
 
     A->>SH: session_health({ autoFix: true })
-    SH->>GW: sessions.list
-    GW-->>SH: [alive sessions]
+    Note over SH: Checks sessions via Gateway RPC (sessions.list)
     SH-->>A: { healthy: true }
 
     A->>QS: queue_status()
@@ -399,7 +403,7 @@ sequenceDiagram
 
     Note over A: DEV idle + To Do #43 → pick up
     A->>TP: task_pickup({ issueId: 43, role: "dev", ... })
-    Note over TP: Plugin handles everything:<br/>model select → session lookup →<br/>gateway patch → CLI send →<br/>label transition → state update
+    Note over TP: Plugin handles everything:<br/>model select → session lookup →<br/>label transition → dispatch task →<br/>state update → audit log
 
     Note over A: QA idle + To Test #44 → pick up
     A->>TP: task_pickup({ issueId: 44, role: "qa", ... })
@@ -423,27 +427,27 @@ Every piece of data and where it lives:
 ┌─────────────────────────────────────────────────────────────────┐
 │ DevClaw Plugin (orchestration logic)                            │
 │                                                                 │
-│  task_pickup    → model select + session manage + label + state │
+│  task_pickup    → model + label + dispatch + state (end-to-end) │
 │  task_complete  → label transition + state update + git pull    │
 │  queue_status   → read labels + read state                     │
-│  session_health → check sessions via gateway + fix zombies     │
+│  session_health → check sessions + fix zombies                 │
 └─────────────────────────────────────────────────────────────────┘
-        ↕ atomic file I/O          ↕ Gateway RPC / CLI
+        ↕ atomic file I/O          ↕ OpenClaw CLI (plugin shells out)
 ┌────────────────────────────────┐ ┌──────────────────────────────┐
-│ memory/projects.json           │ │ OpenClaw Gateway             │
-│                                │ │                              │
-│  Per project:                  │ │  sessions.patch → set model  │
-│    dev:                        │ │  sessions.list  → list alive │
-│      active, issueId, model    │ │  sessions.delete → cleanup   │
-│      sessions:                 │ │                              │
-│        haiku: <uuid>           │ │  openclaw agent CLI          │
-│        sonnet: <uuid>          │ │  → send message to session   │
-│        opus: <uuid>            │ │  → creates session if new    │
-│    qa:                         │ │                              │
-│      active, issueId, model    │ └──────────────────────────────┘
-│      sessions:                 │
-│        grok: <uuid>            │
-└────────────────────────────────┘
+│ memory/projects.json           │ │ OpenClaw Gateway + CLI       │
+│                                │ │ (called by plugin, not agent)│
+│  Per project:                  │ │                              │
+│    dev:                        │ │  openclaw gateway call       │
+│      active, issueId, model    │ │    sessions.patch → create   │
+│      sessions:                 │ │    sessions.list  → health   │
+│        haiku: <key>            │ │    sessions.delete → cleanup │
+│        sonnet: <key>           │ │                              │
+│        opus: <key>             │ │  openclaw agent              │
+│    qa:                         │ │    --session-id <key>        │
+│      active, issueId, model    │ │    --message "task..."       │
+│      sessions:                 │ │    → dispatches to session   │
+│        grok: <key>             │ │                              │
+└────────────────────────────────┘ └──────────────────────────────┘
         ↕ append-only
 ┌─────────────────────────────────────────────────────────────────┐
 │ memory/audit.log (observability)                                │
@@ -485,7 +489,7 @@ graph LR
         L[Label transitions]
         S[Worker state]
         M[Model selection]
-        SS[Session spawn/send]
+        SD[Session dispatch<br/>create + send via CLI]
         A[Audit logging]
         Z[Zombie cleanup]
     end
@@ -513,9 +517,10 @@ graph LR
 
 | Failure | Detection | Recovery |
 |---|---|---|
-| Session dies mid-task | `session_health` checks via `sessions.list` gateway RPC | `autoFix`: reverts label, clears active state, removes dead session from sessions map. Next heartbeat picks up task again (spawns fresh session for that model). |
-| glab command fails | Tool throws error, returns to agent | Agent retries or reports to Telegram group |
-| Gateway RPC fails | `sessions.patch` or `openclaw agent` returns error | Tool returns error to orchestrator with details. Agent can retry or report. |
+| Session dies mid-task | `session_health` checks via `sessions.list` Gateway RPC | `autoFix`: reverts label, clears active state, removes dead session from sessions map. Next heartbeat picks up task again (creates fresh session for that model). |
+| glab command fails | Plugin tool throws error, returns to agent | Agent retries or reports to Telegram group |
+| `openclaw agent` CLI fails | Plugin catches error during dispatch | Plugin rolls back: reverts label, clears active state. Returns error to agent for reporting. |
+| `sessions.patch` fails | Plugin catches error during session creation | Plugin rolls back label transition. Returns error. No orphaned state. |
 | projects.json corrupted | Tool can't parse JSON | Manual fix needed. Atomic writes (temp+rename) prevent partial writes. |
 | Label out of sync | `task_pickup` verifies label before transitioning | Throws error if label doesn't match expected state. Agent reports mismatch. |
 | Worker already active | `task_pickup` checks `active` flag | Throws error: "DEV worker already active on project". Must complete current task first. |

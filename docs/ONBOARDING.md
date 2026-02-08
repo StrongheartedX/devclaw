@@ -42,10 +42,7 @@ In `openclaw.json`, your orchestrator agent needs access to the DevClaw tools:
           "task_pickup",
           "task_complete",
           "queue_status",
-          "session_health",
-          "sessions_spawn",
-          "sessions_send",
-          "sessions_list"
+          "session_health"
         ]
       }
     }]
@@ -53,7 +50,7 @@ In `openclaw.json`, your orchestrator agent needs access to the DevClaw tools:
 }
 ```
 
-The agent also needs the OpenClaw session tools (`sessions_spawn`, `sessions_send`, `sessions_list`) — DevClaw handles the orchestration logic (labels, state, model selection, audit), but the agent executes the actual session operations to spawn or communicate with DEV/QA sub-agent sessions.
+The agent only needs the four DevClaw tools. Session management (`sessions_spawn`, `sessions_send`) is **not needed** — the plugin handles session creation and task dispatch internally via OpenClaw CLI. This eliminates the fragile handoff where agents had to correctly call session tools with the right parameters.
 
 ### 3. Create GitLab labels
 
@@ -87,17 +84,23 @@ Add your project to `memory/projects.json` in the orchestrator's workspace:
       "deployBranch": "development",
       "dev": {
         "active": false,
-        "sessionId": null,
         "issueId": null,
         "startTime": null,
-        "model": null
+        "model": null,
+        "sessions": {
+          "haiku": null,
+          "sonnet": null,
+          "opus": null
+        }
       },
       "qa": {
         "active": false,
-        "sessionId": null,
         "issueId": null,
         "startTime": null,
-        "model": null
+        "model": null,
+        "sessions": {
+          "grok": null
+        }
       }
     }
   }
@@ -117,7 +120,7 @@ Issues can be created in multiple ways:
 - **Via glab CLI** — `cd ~/git/my-project && glab issue create --title "My first task" --label "To Do"`
 - **Via GitLab UI** — Create an issue and add the "To Do" label
 
-The orchestrator agent and sub-agent sessions can all create and update issues via `glab` tool usage.
+The orchestrator agent and worker sessions can all create and update issues via `glab` tool usage.
 
 ### 7. Test the pipeline
 
@@ -129,7 +132,7 @@ The agent should call `queue_status` and report the "To Do" issue. Then:
 
 > "Pick up issue #1 for DEV"
 
-The agent calls `task_pickup`, which selects a model, transitions the label to "Doing", and returns instructions to spawn or reuse a DEV sub-agent session.
+The agent calls `task_pickup`, which selects a model, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task — all in one call. The agent just posts the announcement.
 
 ## Adding more projects
 
@@ -148,11 +151,11 @@ Each project is fully isolated — separate queue, separate workers, separate st
 | Project registration | You (once per project) | Entry in `projects.json` |
 | Agent definition | You (once) | Agent in `openclaw.json` with tool permissions |
 | Telegram group setup | You (once per project) | Add bot to group |
-| Issue creation | Agent or sub-agents | Created via `glab` tool usage (or manually via GitLab UI) |
+| Issue creation | Agent or worker sessions | Created via `glab` tool usage (or manually via GitLab UI) |
 | Label transitions | Plugin | Atomic `--unlabel` + `--label` via glab |
 | Model selection | Plugin | Keyword-based heuristic per task |
 | State management | Plugin | Atomic read/write to `projects.json` |
-| Session reuse | Plugin | Detects existing sessions, returns spawn vs send |
+| Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `session_health` checks active vs alive |
 | Queue scanning | Plugin | `queue_status` queries GitLab per project |
