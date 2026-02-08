@@ -1,0 +1,22 @@
+{
+  "id": "devclaw",
+  "name": "DevClaw",
+  "description": "Multi-project dev/qa pipeline orchestration for OpenClaw. Atomic task pickup, completion, queue status, and session health tools.",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "modelSelection": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "analyzerModel": { "type": "string" }
+        }
+      },
+      "glabPath": {
+        "type": "string",
+        "description": "Path to glab CLI binary. Defaults to 'glab' on PATH."
+      }
+    }
+  }
+}

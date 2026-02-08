@@ -1,0 +1,31 @@
+{
+  "name": "@openclaw/devclaw",
+  "version": "0.1.0",
+  "description": "Multi-project dev/qa pipeline orchestration for OpenClaw",
+  "type": "module",
+  "license": "MIT",
+  "author": "laurentenhoor",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/laurentenhoor/devclaw.git"
+  },
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "dev-pipeline",
+    "orchestration",
+    "gitlab",
+    "multi-project"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  }
+}
