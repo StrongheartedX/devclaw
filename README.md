@@ -2,7 +2,7 @@
 
 **One agent. One group chat. A full dev team.**
 
-Add the orchestrator agent to a Telegram group, point it at a GitLab repo, and you have an isolated development team — a DEV that writes code, a QA that reviews it, and a team lead that manages the pipeline. Add another group chat, get another team. Each project runs independently with its own task queue, its own sub-agents, and its own session state.
+Add the orchestrator to a Telegram group, point it at a GitLab repo, and it spins up an isolated dev team: a **PM** (the orchestrator itself) that manages the backlog, a **DEV** sub-agent that writes code, and a **QA** sub-agent that reviews it. Add another group chat — another team. Each runs independently with its own task queue, workers, and session state.
 
 DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
 
@@ -14,51 +14,54 @@ DevClaw fills that gap with guardrails. It gives the orchestrator atomic tools t
 
 ## The idea
 
-You have one AI agent — the orchestrator. It lives in a Telegram group per project. Each project has its own GitLab repo, its own task backlog, and its own pair of sub-agent workers: a **DEV** that writes code and a **QA** that reviews it. The orchestrator decides what to work on, spawns the right worker with the right model, and moves tasks through the pipeline — across all projects at once.
+One head agent acts as the **PM** across all your projects. It reads task backlogs, decides priorities, and delegates work. For each task, it spawns (or reuses) a **DEV** sub-agent to write code or a **QA** sub-agent to review it. Every Telegram group is a separate project — the PM keeps them completely isolated while managing them all from a single process.
 
-DevClaw gives the orchestrator four tools that replace hundreds of lines of manual orchestration logic. Instead of the agent following a 10-step checklist (fetch issue, check labels, pick model, check for existing session, transition label, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically.
+DevClaw gives the PM four tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically.
 
 ## How it works
 
 ```mermaid
 graph TB
-    subgraph "Orchestrator Agent"
-        O[Orchestrator]
-    end
-
-    subgraph "Project A — Telegram Group"
+    subgraph "Group Chat A"
         direction TB
+        A_PM["🎯 PM (head agent)"]
         A_GL[GitLab Issues]
-        A_DEV[DEV sub-agent]
-        A_QA[QA sub-agent]
+        A_DEV["🔧 DEV (sub-agent)"]
+        A_QA["🔍 QA (sub-agent)"]
+        A_PM -->|task_pickup| A_GL
+        A_PM -->|spawns / sends| A_DEV
+        A_PM -->|spawns / sends| A_QA
     end
 
-    subgraph "Project B — Telegram Group"
+    subgraph "Group Chat B"
         direction TB
+        B_PM["🎯 PM (head agent)"]
         B_GL[GitLab Issues]
-        B_DEV[DEV sub-agent]
-        B_QA[QA sub-agent]
+        B_DEV["🔧 DEV (sub-agent)"]
+        B_QA["🔍 QA (sub-agent)"]
+        B_PM -->|task_pickup| B_GL
+        B_PM -->|spawns / sends| B_DEV
+        B_PM -->|spawns / sends| B_QA
     end
 
-    subgraph "Project C — Telegram Group"
+    subgraph "Group Chat C"
         direction TB
+        C_PM["🎯 PM (head agent)"]
         C_GL[GitLab Issues]
-        C_DEV[DEV sub-agent]
-        C_QA[QA sub-agent]
+        C_DEV["🔧 DEV (sub-agent)"]
+        C_QA["🔍 QA (sub-agent)"]
+        C_PM -->|task_pickup| C_GL
+        C_PM -->|spawns / sends| C_DEV
+        C_PM -->|spawns / sends| C_QA
     end
 
-    O -->|task_pickup / task_complete| A_GL
-    O -->|task_pickup / task_complete| B_GL
-    O -->|task_pickup / task_complete| C_GL
-    O -->|sessions_spawn / sessions_send| A_DEV
-    O -->|sessions_spawn / sessions_send| A_QA
-    O -->|sessions_spawn / sessions_send| B_DEV
-    O -->|sessions_spawn / sessions_send| B_QA
-    O -->|sessions_spawn / sessions_send| C_DEV
-    O -->|sessions_spawn / sessions_send| C_QA
+    AGENT["Single OpenClaw Agent"]
+    AGENT --- A_PM
+    AGENT --- B_PM
+    AGENT --- C_PM
 ```
 
-Each project is identified by its **Telegram group ID** — the orchestrator receives messages from project groups and knows which project context it's operating in.
+It's the same agent process — but each group chat gives it a different project context. The PM role, the workers, the task queue, and all state are fully isolated per group.
 
 ## Task lifecycle
 
