@@ -15,6 +15,7 @@
     "dev-pipeline",
     "orchestration",
     "gitlab",
+    "github",
     "multi-project"
   ],
   "engines": {
@@ -25,7 +26,7 @@
       "./index.ts"
     ]
   },
-  "devDependencies": {
-    "openclaw": "workspace:*"
+  "peerDependencies": {
+    "openclaw": ">=2026.0.0"
   }
 }

@@ -6,7 +6,7 @@ import { createSessionHealthTool } from "./lib/tools/session-health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createTaskCreateTool } from "./lib/tools/task-create.js";
 import { createSetupTool } from "./lib/tools/devclaw-setup.js";
-import { runCli } from "./lib/cli.js";
+import { registerCli } from "./lib/cli.js";
 
 const plugin = {
   id: "devclaw",
@@ -61,12 +61,9 @@ const plugin = {
       names: ["devclaw_setup"],
     });
 
-    // CLI commands
-    api.registerCli("setup", {
-      description: "Set up DevClaw: create agent, configure models, write workspace files",
-      run: async (argv: string[]) => {
-        await runCli(argv);
-      },
+    // CLI: `openclaw devclaw setup`
+    api.registerCli(({ program }: { program: any }) => registerCli(program), {
+      commands: ["devclaw"],
     });
 
     api.logger.info("DevClaw plugin registered (7 tools, 1 CLI command)");

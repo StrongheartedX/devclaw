@@ -1,208 +1,68 @@
 /**
- * cli.ts — CLI command for `openclaw devclaw setup`.
+ * cli.ts — CLI registration for `openclaw devclaw setup`.
  *
- * Interactive and non-interactive modes for onboarding.
+ * Uses Commander.js (provided by OpenClaw plugin SDK context).
  */
-import { createInterface } from "node:readline";
-import { runSetup, type SetupOpts } from "./setup.js";
+import type { Command } from "commander";
+import { runSetup } from "./setup.js";
 import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "./tiers.js";
 
-type CliArgs = {
-  /** Create a new agent */
-  newAgent?: string;
-  /** Use existing agent */
-  agent?: string;
-  /** Direct workspace path */
-  workspace?: string;
-  /** Model overrides */
-  junior?: string;
-  medior?: string;
-  senior?: string;
-  qa?: string;
-  /** Skip prompts */
-  nonInteractive?: boolean;
-};
-
 /**
- * Parse CLI arguments from argv-style array.
- * Expects: ["setup", "--new-agent", "name", "--junior", "model", ...]
+ * Register the `devclaw` CLI command group on a Commander program.
  */
-export function parseArgs(argv: string[]): CliArgs {
-  const args: CliArgs = {};
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    const next = argv[i + 1];
-    switch (arg) {
-      case "--new-agent":
-        args.newAgent = next;
-        i++;
-        break;
-      case "--agent":
-        args.agent = next;
-        i++;
-        break;
-      case "--workspace":
-        args.workspace = next;
-        i++;
-        break;
-      case "--junior":
-        args.junior = next;
-        i++;
-        break;
-      case "--medior":
-        args.medior = next;
-        i++;
-        break;
-      case "--senior":
-        args.senior = next;
-        i++;
-        break;
-      case "--qa":
-        args.qa = next;
-        i++;
-        break;
-      case "--non-interactive":
-        args.nonInteractive = true;
-        break;
-    }
-  }
-  return args;
-}
+export function registerCli(program: Command): void {
+  const devclaw = program
+    .command("devclaw")
+    .description("DevClaw development pipeline tools");
 
-/**
- * Run the interactive setup wizard.
- */
-async function interactiveSetup(): Promise<SetupOpts> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  devclaw
+    .command("setup")
+    .description("Set up DevClaw: create agent, configure models, write workspace files")
+    .option("--new-agent <name>", "Create a new agent with this name")
+    .option("--agent <id>", "Use an existing agent by ID")
+    .option("--workspace <path>", "Direct workspace path")
+    .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.junior})`)
+    .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.medior})`)
+    .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.senior})`)
+    .option("--qa <model>", `QA engineer model (default: ${DEFAULT_MODELS.qa})`)
+    .action(async (opts) => {
+      const models: Partial<Record<Tier, string>> = {};
+      if (opts.junior) models.junior = opts.junior;
+      if (opts.medior) models.medior = opts.medior;
+      if (opts.senior) models.senior = opts.senior;
+      if (opts.qa) models.qa = opts.qa;
 
-  const ask = (question: string): Promise<string> =>
-    new Promise((resolve) => rl.question(question, resolve));
+      const result = await runSetup({
+        newAgentName: opts.newAgent,
+        agentId: opts.agent,
+        workspacePath: opts.workspace,
+        models: Object.keys(models).length > 0 ? models : undefined,
+      });
 
-  console.log("");
-  console.log("DevClaw Setup");
-  console.log("=============");
-  console.log("");
+      if (result.agentCreated) {
+        console.log(`Agent "${result.agentId}" created`);
+      }
 
-  // Step 1: Agent
-  console.log("Step 1: Agent");
-  console.log("─────────────");
-  const agentChoice = await ask(
-    "Create a new agent or use an existing one? [new/existing]: ",
-  );
+      console.log("Models configured:");
+      for (const tier of ALL_TIERS) {
+        console.log(`  ${tier}: ${result.models[tier]}`);
+      }
 
-  let newAgentName: string | undefined;
-  let agentId: string | undefined;
+      console.log("Files written:");
+      for (const file of result.filesWritten) {
+        console.log(`  ${file}`);
+      }
 
-  if (agentChoice.toLowerCase().startsWith("n")) {
-    newAgentName = await ask("Agent name: ");
-    if (!newAgentName.trim()) {
-      rl.close();
-      throw new Error("Agent name cannot be empty");
-    }
-    newAgentName = newAgentName.trim();
-  } else {
-    agentId = await ask("Agent ID: ");
-    if (!agentId.trim()) {
-      rl.close();
-      throw new Error("Agent ID cannot be empty");
-    }
-    agentId = agentId.trim();
-  }
+      if (result.warnings.length > 0) {
+        console.log("\nWarnings:");
+        for (const w of result.warnings) {
+          console.log(`  ${w}`);
+        }
+      }
 
-  // Step 2: Models
-  console.log("");
-  console.log("Step 2: Developer Team (models)");
-  console.log("───────────────────────────────");
-  console.log("Press Enter to accept defaults.");
-  console.log("");
-
-  const models: Partial<Record<Tier, string>> = {};
-  for (const tier of ALL_TIERS) {
-    const label =
-      tier === "junior"
-        ? "Junior dev (fast, cheap tasks)"
-        : tier === "medior"
-          ? "Medior dev (standard tasks)"
-          : tier === "senior"
-            ? "Senior dev (complex tasks)"
-            : "QA engineer (code review)";
-    const answer = await ask(`  ${label} [${DEFAULT_MODELS[tier]}]: `);
-    if (answer.trim()) {
-      models[tier] = answer.trim();
-    }
-  }
-
-  rl.close();
-
-  console.log("");
-  console.log("Step 3: Workspace");
-  console.log("─────────────────");
-
-  return { newAgentName, agentId, models };
-}
-
-/**
- * Main CLI entry point.
- */
-export async function runCli(argv: string[]): Promise<void> {
-  const args = parseArgs(argv);
-
-  let opts: SetupOpts;
-
-  if (args.nonInteractive || args.newAgent || args.agent || args.workspace) {
-    // Non-interactive mode
-    const models: Partial<Record<Tier, string>> = {};
-    if (args.junior) models.junior = args.junior;
-    if (args.medior) models.medior = args.medior;
-    if (args.senior) models.senior = args.senior;
-    if (args.qa) models.qa = args.qa;
-
-    opts = {
-      newAgentName: args.newAgent,
-      agentId: args.agent,
-      workspacePath: args.workspace,
-      models: Object.keys(models).length > 0 ? models : undefined,
-    };
-  } else {
-    // Interactive mode
-    opts = await interactiveSetup();
-  }
-
-  console.log("");
-  const result = await runSetup(opts);
-
-  // Print results
-  if (result.agentCreated) {
-    console.log(`  Agent "${result.agentId}" created`);
-  }
-
-  console.log(`  Models configured:`);
-  for (const tier of ALL_TIERS) {
-    console.log(`    ${tier}: ${result.models[tier]}`);
-  }
-
-  console.log(`  Files written:`);
-  for (const file of result.filesWritten) {
-    console.log(`    ${file}`);
-  }
-
-  if (result.warnings.length > 0) {
-    console.log("");
-    console.log("  Warnings:");
-    for (const w of result.warnings) {
-      console.log(`    ${w}`);
-    }
-  }
-
-  console.log("");
-  console.log("Done! Next steps:");
-  console.log("  1. Add bot to a Telegram group");
-  console.log(
-    '  2. Register a project: "Register project <name> at <repo> for group <id>"',
-  );
-  console.log("  3. Create your first issue and pick it up");
-  console.log("");
+      console.log("\nDone! Next steps:");
+      console.log("  1. Add bot to a Telegram group");
+      console.log('  2. Register a project: "Register project <name> at <repo> for group <id>"');
+      console.log("  3. Create your first issue and pick it up");
+    });
 }
