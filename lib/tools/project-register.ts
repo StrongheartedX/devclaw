@@ -12,7 +12,7 @@ import type { ToolContext } from "../types.js";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
-import { resolveRepoPath } from "../gitlab.js";
+import { resolveRepoPath } from "../utils.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { DEV_TIERS, QA_TIERS } from "../tiers.js";

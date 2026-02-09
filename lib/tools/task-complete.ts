@@ -14,14 +14,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import { log as auditLog } from "../audit.js";
 import { dispatchTask } from "../dispatch.js";
-import {
-  closeIssue,
-  getIssue,
-  reopenIssue,
-  resolveRepoPath,
-  transitionLabel,
-  type StateLabel,
-} from "../gitlab.js";
+import { type StateLabel } from "../issue-provider.js";
+import { createProvider } from "../providers/index.js";
 import {
   deactivateWorker,
   getProject,
@@ -30,6 +24,7 @@ import {
   readProjects,
 } from "../projects.js";
 import type { ToolContext } from "../types.js";
+import { resolveRepoPath } from "../utils.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -111,12 +106,15 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       }
 
       const repoPath = resolveRepoPath(project.repo);
-      const glabOpts = {
+      const { provider } = createProvider({
         glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as
           | string
           | undefined,
+        ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as
+          | string
+          | undefined,
         repoPath,
-      };
+      });
 
       const output: Record<string, unknown> = {
         success: true,
@@ -140,7 +138,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         }
 
         await deactivateWorker(workspaceDir, groupId, "dev");
-        await transitionLabel(issueId, "Doing", "To Test", glabOpts);
+        await provider.transitionLabel(issueId, "Doing", "To Test");
 
         output.labelTransition = "Doing → To Test";
         output.announcement = `✅ DEV done #${issueId}${summary ? ` — ${summary}` : ""}. Moved to QA queue.`;
@@ -150,7 +148,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
             const pluginConfig = api.pluginConfig as
               | Record<string, unknown>
               | undefined;
-            const issue = await getIssue(issueId, glabOpts);
+            const issue = await provider.getIssue(issueId);
             const chainResult = await dispatchTask({
               workspaceDir,
               agentId: ctx.agentId,
@@ -165,11 +163,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               fromLabel: "To Test",
               toLabel: "Testing",
               transitionLabel: (id, from, to) =>
-                transitionLabel(
+                provider.transitionLabel(
                   id,
                   from as StateLabel,
                   to as StateLabel,
-                  glabOpts,
                 ),
               pluginConfig,
             });
@@ -194,8 +191,8 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       // === QA PASS ===
       if (role === "qa" && result === "pass") {
         await deactivateWorker(workspaceDir, groupId, "qa");
-        await transitionLabel(issueId, "Testing", "Done", glabOpts);
-        await closeIssue(issueId, glabOpts);
+        await provider.transitionLabel(issueId, "Testing", "Done");
+        await provider.closeIssue(issueId);
 
         output.labelTransition = "Testing → Done";
         output.issueClosed = true;
@@ -205,8 +202,8 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       // === QA FAIL ===
       if (role === "qa" && result === "fail") {
         await deactivateWorker(workspaceDir, groupId, "qa");
-        await transitionLabel(issueId, "Testing", "To Improve", glabOpts);
-        await reopenIssue(issueId, glabOpts);
+        await provider.transitionLabel(issueId, "Testing", "To Improve");
+        await provider.reopenIssue(issueId);
 
         const devWorker = getWorker(project, "dev");
         const devModel = devWorker.model;
@@ -225,7 +222,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
             const pluginConfig = api.pluginConfig as
               | Record<string, unknown>
               | undefined;
-            const issue = await getIssue(issueId, glabOpts);
+            const issue = await provider.getIssue(issueId);
             const chainResult = await dispatchTask({
               workspaceDir,
               agentId: ctx.agentId,
@@ -240,11 +237,10 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               fromLabel: "To Improve",
               toLabel: "Doing",
               transitionLabel: (id, from, to) =>
-                transitionLabel(
+                provider.transitionLabel(
                   id,
                   from as StateLabel,
                   to as StateLabel,
-                  glabOpts,
                 ),
               pluginConfig,
             });
@@ -269,7 +265,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       // === QA REFINE ===
       if (role === "qa" && result === "refine") {
         await deactivateWorker(workspaceDir, groupId, "qa");
-        await transitionLabel(issueId, "Testing", "Refining", glabOpts);
+        await provider.transitionLabel(issueId, "Testing", "Refining");
 
         output.labelTransition = "Testing → Refining";
         output.announcement = `🤔 QA REFINE #${issueId}${summary ? ` — ${summary}` : ""}. Awaiting human decision.`;

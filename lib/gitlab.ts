@@ -1,4 +1,7 @@
 /**
+ * @deprecated This module is deprecated and kept only for reference.
+ * Use lib/providers/index.ts with createProvider() for GitLab/GitHub abstraction.
+ * 
  * GitLab wrapper using glab CLI.
  * Handles label transitions, issue fetching, and MR verification.
  */

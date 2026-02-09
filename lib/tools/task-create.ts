@@ -13,7 +13,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects } from "../projects.js";
-import { resolveRepoPath } from "../gitlab.js";
+import { resolveRepoPath } from "../utils.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../issue-provider.js";

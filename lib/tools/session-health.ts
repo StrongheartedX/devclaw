@@ -8,8 +8,10 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects, updateWorker, getSessionForModel } from "../projects.js";
-import { transitionLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
+import { type StateLabel } from "../issue-provider.js";
+import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
+import { resolveRepoPath } from "../utils.js";
 
 export function createSessionHealthTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -41,14 +43,17 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
       }
 
       const data = await readProjects(workspaceDir);
-      const glabPath = (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined;
 
       const issues: Array<Record<string, unknown>> = [];
       let fixesApplied = 0;
 
       for (const [groupId, project] of Object.entries(data.projects)) {
         const repoPath = resolveRepoPath(project.repo);
-        const glabOpts = { glabPath, repoPath };
+        const { provider } = createProvider({
+          glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
+          ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as string | undefined,
+          repoPath,
+        });
 
         for (const role of ["dev", "qa"] as const) {
           const worker = project[role];
@@ -98,13 +103,13 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
             };
 
             if (autoFix) {
-              // Revert GitLab label
+              // Revert issue label
               const revertLabel: StateLabel = role === "dev" ? "To Do" : "To Test";
               const currentLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
               try {
                 if (worker.issueId) {
                   const primaryIssueId = Number(worker.issueId.split(",")[0]);
-                  await transitionLabel(primaryIssueId, currentLabel, revertLabel, glabOpts);
+                  await provider.transitionLabel(primaryIssueId, currentLabel, revertLabel);
                   issue.labelReverted = `${currentLabel} → ${revertLabel}`;
                 }
               } catch {
