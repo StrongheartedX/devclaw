@@ -11,7 +11,7 @@ import { execFileSync } from "node:child_process";
 import type { TaskManager } from "./task-manager.js";
 import { GitLabProvider } from "./gitlab.js";
 import { GitHubProvider } from "./github.js";
-import { resolveRepoPath } from "../utils.js";
+import { resolveRepoPath } from "../projects.js";
 
 export type ProviderOptions = {
   provider?: "gitlab" | "github";
@@ -24,7 +24,9 @@ function detectProvider(repoPath: string): "gitlab" | "github" {
     const url = execFileSync("git", ["remote", "get-url", "origin"], {
       cwd: repoPath,
       timeout: 5_000,
-    }).toString().trim();
+    })
+      .toString()
+      .trim();
 
     if (url.includes("github.com")) return "github";
     return "gitlab";
@@ -39,9 +41,12 @@ export type ProviderWithType = {
 };
 
 export function createProvider(opts: ProviderOptions): ProviderWithType {
-  const repoPath = opts.repoPath ?? (opts.repo ? resolveRepoPath(opts.repo) : null);
+  const repoPath =
+    opts.repoPath ?? (opts.repo ? resolveRepoPath(opts.repo) : null);
   if (!repoPath) {
-    throw new Error("Either repoPath or repo must be provided to createProvider");
+    throw new Error(
+      "Either repoPath or repo must be provided to createProvider",
+    );
   }
 
   const type = opts.provider ?? detectProvider(repoPath);

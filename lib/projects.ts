@@ -4,6 +4,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { homedir } from "node:os";
 import { TIER_MIGRATION } from "./tiers.js";
 
 export type WorkerState = {
@@ -228,4 +229,15 @@ export async function deactivateWorker(
     active: false,
     issueId: null,
   });
+}
+
+/**
+ * Resolve repo path from projects.json repo field (handles ~/ expansion).
+ * Uses os.homedir() for cross-platform home directory resolution.
+ */
+export function resolveRepoPath(repoField: string): string {
+  if (repoField.startsWith("~/")) {
+    return repoField.replace("~", homedir());
+  }
+  return repoField;
 }
