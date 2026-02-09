@@ -278,6 +278,7 @@ async function resolveWorkspacePath(agentId: string): Promise<string> {
 /**
  * Write DevClaw model tier config and devClawAgentIds to openclaw.json plugins section.
  * Also adds tool restrictions (deny sessions_spawn) to DevClaw agents.
+ * Configures subagent cleanup interval to keep development sessions alive.
  * Read-modify-write to preserve existing config.
  */
 async function writePluginConfig(
@@ -301,6 +302,13 @@ async function writePluginConfig(
 
   // Write models
   config.plugins.entries.devclaw.config.models = { ...models };
+
+  // Configure subagent cleanup interval to 30 days (43200 minutes)
+  // This keeps development sessions alive during active development
+  if (!config.agents) config.agents = {};
+  if (!config.agents.defaults) config.agents.defaults = {};
+  if (!config.agents.defaults.subagents) config.agents.defaults.subagents = {};
+  config.agents.defaults.subagents.archiveAfterMinutes = 43200;
 
   // Write/update devClawAgentIds
   if (agentId) {
