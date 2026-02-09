@@ -11,17 +11,13 @@
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import { dispatchTask } from "../dispatch.js";
-import {
-  getCurrentStateLabel,
-  getIssue,
-  resolveRepoPath,
-  transitionLabel,
-  type StateLabel,
-} from "../gitlab.js";
+import { type StateLabel } from "../issue-provider.js";
+import { createProvider } from "../providers/index.js";
 import { selectModel } from "../model-selector.js";
 import { getProject, getWorker, readProjects } from "../projects.js";
 import type { ToolContext } from "../types.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
+import { resolveRepoPath } from "../utils.js";
 
 export function createTaskPickupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -101,15 +97,18 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
 
       // 3. Fetch issue and verify state
       const repoPath = resolveRepoPath(project.repo);
-      const glabOpts = {
+      const { provider } = createProvider({
         glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as
           | string
           | undefined,
+        ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as
+          | string
+          | undefined,
         repoPath,
-      };
+      });
 
-      const issue = await getIssue(issueId, glabOpts);
-      const currentLabel = getCurrentStateLabel(issue);
+      const issue = await provider.getIssue(issueId);
+      const currentLabel = provider.getCurrentStateLabel(issue);
 
       const validLabelsForDev: StateLabel[] = ["To Do", "To Improve"];
       const validLabelsForQa: StateLabel[] = ["To Test"];
@@ -160,7 +159,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         fromLabel: currentLabel,
         toLabel: targetLabel,
         transitionLabel: (id, from, to) =>
-          transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+          provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         pluginConfig,
       });
 

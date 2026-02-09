@@ -7,9 +7,11 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { readProjects, getProject } from "../projects.js";
-import { listIssuesByLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
+import { type StateLabel } from "../issue-provider.js";
+import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { detectContext, generateGuardrails } from "../context-guard.js";
+import { resolveRepoPath } from "../utils.js";
 
 export function createQueueStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -61,7 +63,6 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
         ? [groupId]
         : Object.keys(data.projects);
 
-      const glabPath = (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined;
       const projects: Array<Record<string, unknown>> = [];
 
       for (const pid of projectIds) {
@@ -69,15 +70,19 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
         if (!project) continue;
 
         const repoPath = resolveRepoPath(project.repo);
-        const glabOpts = { glabPath, repoPath };
+        const { provider } = createProvider({
+          glabPath: (api.pluginConfig as Record<string, unknown>)?.glabPath as string | undefined,
+          ghPath: (api.pluginConfig as Record<string, unknown>)?.ghPath as string | undefined,
+          repoPath,
+        });
 
-        // Fetch queue counts from GitLab
+        // Fetch queue counts from issue tracker
         const queueLabels: StateLabel[] = ["To Improve", "To Test", "To Do"];
         const queue: Record<string, Array<{ id: number; title: string }>> = {};
 
         for (const label of queueLabels) {
           try {
-            const issues = await listIssuesByLabel(label, glabOpts);
+            const issues = await provider.listIssuesByLabel(label);
             queue[label] = issues.map((i) => ({ id: i.iid, title: i.title }));
           } catch {
             queue[label] = [];
