@@ -5,8 +5,8 @@
  * issue close/reopen, audit logging, and optional auto-chaining.
  *
  * When project.autoChain is true:
- *   - DEV "done" → automatically dispatches QA (default model: grok)
- *   - QA "fail" → automatically dispatches DEV fix (reuses previous DEV model)
+ *   - DEV "done" → automatically dispatches QA (qa tier)
+ *   - QA "fail" → automatically dispatches DEV fix (reuses previous DEV tier)
  */
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
 import {
@@ -120,6 +120,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         if (project.autoChain) {
           try {
+            const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
             const issue = await getIssue(issueId, glabOpts);
             const chainResult = await dispatchTask({
               workspaceDir,
@@ -131,11 +132,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               issueDescription: issue.description ?? "",
               issueUrl: issue.web_url,
               role: "qa",
-              modelAlias: "grok",
+              modelAlias: "qa",
               fromLabel: "To Test",
               toLabel: "Testing",
               transitionLabel: (id, from, to) =>
                 transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+              pluginConfig,
             });
             output.autoChain = {
               dispatched: true,
@@ -181,6 +183,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
         if (project.autoChain && devModel) {
           try {
+            const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
             const issue = await getIssue(issueId, glabOpts);
             const chainResult = await dispatchTask({
               workspaceDir,
@@ -197,6 +200,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
               toLabel: "Doing",
               transitionLabel: (id, from, to) =>
                 transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+              pluginConfig,
             });
             output.autoChain = {
               dispatched: true,

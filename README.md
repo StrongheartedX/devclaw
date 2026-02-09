@@ -14,9 +14,22 @@ DevClaw fills that gap with guardrails. It gives the orchestrator atomic tools t
 
 ## The idea
 
-One orchestrator agent manages all your projects. It reads task backlogs, creates issues, decides priorities, and delegates work. For each task, DevClaw creates (or reuses) a **DEV** worker session to write code or a **QA** worker session to review it. Every Telegram group is a separate project — the orchestrator keeps them completely isolated while managing them all from a single process.
+One orchestrator agent manages all your projects. It reads task backlogs, creates issues, decides priorities, and delegates work. For each task, DevClaw assigns a developer from your **team** — a junior, medior, or senior dev writes the code, then a QA engineer reviews it. Every Telegram group is a separate project — the orchestrator keeps them completely isolated while managing them all from a single process.
 
-DevClaw gives the orchestrator six tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, dispatch task, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically — including session dispatch. Workers call `task_complete` themselves for atomic state updates, and can file follow-up issues via `task_create`.
+DevClaw gives the orchestrator seven tools that replace hundreds of lines of manual orchestration logic. Instead of following a 10-step checklist per task (fetch issue, check labels, pick model, check for existing session, transition label, dispatch task, update state, log audit event...), it calls `task_pickup` and the plugin handles everything atomically — including session dispatch. Workers call `task_complete` themselves for atomic state updates, and can file follow-up issues via `task_create`.
+
+## Developer tiers
+
+DevClaw uses a developer seniority model. Each tier maps to a configurable LLM model:
+
+| Tier | Role | Default model | Assigns to |
+|------|------|---------------|------------|
+| **junior** | Junior developer | `anthropic/claude-haiku-4-5` | Typos, single-file fixes, simple changes |
+| **medior** | Mid-level developer | `anthropic/claude-sonnet-4-5` | Features, bug fixes, multi-file changes |
+| **senior** | Senior developer | `anthropic/claude-opus-4-5` | Architecture, migrations, system-wide refactoring |
+| **qa** | QA engineer | `anthropic/claude-sonnet-4-5` | Code review, test validation |
+
+Configure which model each tier uses during setup or in `openclaw.json` plugin config.
 
 ## How it works
 
@@ -93,15 +106,15 @@ Workers (DEV/QA sub-agent sessions) call `task_complete` directly when they fini
 ### Auto-chaining
 
 When a project has `autoChain: true`, `task_complete` automatically dispatches the next step:
-- **DEV "done"** → QA is dispatched immediately (default model: grok)
-- **QA "fail"** → DEV fix is dispatched immediately (reuses previous DEV model)
+- **DEV "done"** → QA is dispatched immediately (using the qa tier)
+- **QA "fail"** → DEV fix is dispatched immediately (reuses previous DEV tier)
 - **QA "pass" / "refine"** → no chaining (pipeline done or needs human input)
 
 When `autoChain` is false, `task_complete` returns a `nextAction` hint for the orchestrator to act on.
 
 ## Session reuse
 
-Worker sessions are expensive to start — each new spawn requires the session to read the full codebase (~50K tokens). DevClaw maintains **separate sessions per model per role** (session-per-model design). When a DEV finishes task A and picks up task B on the same project with the same model, the plugin detects the existing session and sends the task directly — no new session needed.
+Worker sessions are expensive to start — each new spawn requires the session to read the full codebase (~50K tokens). DevClaw maintains **separate sessions per tier per role** (session-per-tier design). When a medior dev finishes task A and picks up task B on the same project, the plugin detects the existing session and sends the task directly — no new session needed.
 
 The plugin handles session dispatch internally via OpenClaw CLI. The orchestrator agent never calls `sessions_spawn` or `sessions_send` — it just calls `task_pickup` and the plugin does the rest.
 
@@ -114,26 +127,26 @@ sequenceDiagram
 
     O->>DC: task_pickup({ issueId: 42, role: "dev" })
     DC->>GL: Fetch issue, verify label
-    DC->>DC: Select model (haiku/sonnet/opus)
-    DC->>DC: Check existing session for selected model
+    DC->>DC: Assign tier (junior/medior/senior)
+    DC->>DC: Check existing session for assigned tier
     DC->>GL: Transition label (To Do → Doing)
     DC->>S: Dispatch task via CLI (create or reuse session)
     DC->>DC: Update projects.json, write audit log
-    DC-->>O: { success: true, announcement: "🔧 DEV (sonnet) picking up #42" }
+    DC-->>O: { success: true, announcement: "🔧 DEV (medior) picking up #42" }
 ```
 
-## Model selection
+## Developer assignment
 
-The orchestrator LLM analyzes each issue's title, description, and labels to choose the appropriate model tier, then passes it to `task_pickup` via the `model` parameter. This gives the LLM full context for the decision — it can weigh factors like codebase familiarity, task dependencies, and recent failure history that keyword matching would miss.
+The orchestrator LLM evaluates each issue's title, description, and labels to assign the appropriate developer tier, then passes it to `task_pickup` via the `model` parameter. This gives the LLM full context for the decision — it can weigh factors like codebase familiarity, task dependencies, and recent failure history that keyword matching would miss.
 
 The keyword heuristic in `model-selector.ts` serves as a **fallback only**, used when the orchestrator omits the `model` parameter.
 
-| Complexity | Model | When |
-|------------|-------|------|
-| Simple | Haiku | Typos, CSS, renames, copy changes |
-| Standard | Sonnet | Features, bug fixes, multi-file changes |
-| Complex | Opus | Architecture, migrations, security, system-wide refactoring |
-| QA | Grok | All QA tasks (code review, test validation) |
+| Tier | Role | When |
+|------|------|------|
+| junior | Junior developer | Typos, CSS, renames, copy changes |
+| medior | Mid-level developer | Features, bug fixes, multi-file changes |
+| senior | Senior developer | Architecture, migrations, security, system-wide refactoring |
+| qa | QA engineer | All QA tasks (code review, test validation) |
 
 ## State management
 
@@ -151,19 +164,19 @@ All project state lives in a single `memory/projects.json` file in the orchestra
       "dev": {
         "active": false,
         "issueId": null,
-        "model": "haiku",
+        "model": "medior",
         "sessions": {
-          "haiku": "agent:orchestrator:subagent:a9e4d078-...",
-          "sonnet": "agent:orchestrator:subagent:b3f5c912-...",
-          "opus": null
+          "junior": "agent:orchestrator:subagent:a9e4d078-...",
+          "medior": "agent:orchestrator:subagent:b3f5c912-...",
+          "senior": null
         }
       },
       "qa": {
         "active": false,
         "issueId": null,
-        "model": "grok",
+        "model": "qa",
         "sessions": {
-          "grok": "agent:orchestrator:subagent:18707821-..."
+          "qa": "agent:orchestrator:subagent:18707821-..."
         }
       }
     }
@@ -172,7 +185,7 @@ All project state lives in a single `memory/projects.json` file in the orchestra
 ```
 
 Key design decisions:
-- **Session-per-model** — each model gets its own worker session, accumulating context independently. Model selection maps directly to a session key.
+- **Session-per-tier** — each tier gets its own worker session, accumulating context independently. Tier selection maps directly to a session key.
 - **Sessions preserved on completion** — when a worker completes a task, `sessions` map is **preserved** (only `active` and `issueId` are cleared). This enables session reuse on the next pickup.
 - **Plugin-controlled dispatch** — the plugin creates and dispatches to sessions via OpenClaw CLI (`sessions.patch` + `openclaw agent`). The orchestrator agent never calls `sessions_spawn` or `sessions_send`.
 - **Sessions persist indefinitely** — no auto-cleanup. `session_health` handles manual cleanup when needed.
@@ -181,27 +194,35 @@ All writes go through atomic temp-file-then-rename to prevent corruption.
 
 ## Tools
 
-### `task_pickup`
+### `devclaw_setup`
 
-Pick up a task from the GitLab queue for a DEV or QA worker.
+Set up DevClaw in an agent's workspace. Creates AGENTS.md, HEARTBEAT.md, role templates, and configures models. Can optionally create a new agent.
 
 **Parameters:**
-- `issueId` (number, required) — GitLab issue ID
+- `newAgentName` (string, optional) — Create a new agent with this name
+- `models` (object, optional) — Model overrides per tier: `{ junior, medior, senior, qa }`
+
+### `task_pickup`
+
+Pick up a task from the issue queue for a DEV or QA worker.
+
+**Parameters:**
+- `issueId` (number, required) — Issue ID
 - `role` ("dev" | "qa", required) — Worker role
 - `projectGroupId` (string, required) — Telegram group ID
-- `model` (string, optional) — Model alias to use (e.g. haiku, sonnet, opus, grok). The orchestrator should analyze the issue complexity and choose. Falls back to keyword heuristic if omitted.
+- `model` (string, optional) — Developer tier (junior, medior, senior, qa). The orchestrator should evaluate the task complexity and choose. Falls back to keyword heuristic if omitted.
 
 **What it does atomically:**
 1. Resolves project from `projects.json`
 2. Validates no active worker for this role
 3. Fetches issue from issue tracker, verifies correct label state
-4. Selects model (LLM-chosen via `model` param, keyword heuristic fallback)
+4. Assigns tier (LLM-chosen via `model` param, keyword heuristic fallback)
 5. Loads role instructions from `roles/<project>/<role>.md` (fallback: `roles/default/<role>.md`)
-6. Looks up existing session for selected model (session-per-model)
+6. Looks up existing session for assigned tier (session-per-tier)
 7. Transitions label (e.g. `To Do` → `Doing`)
 8. Creates session via Gateway RPC if new (`sessions.patch`)
 9. Dispatches task to worker session via CLI (`openclaw agent`) with role instructions appended
-10. Updates `projects.json` state (active, issueId, model, session key)
+10. Updates `projects.json` state (active, issueId, tier, session key)
 11. Writes audit log entry
 12. Returns announcement text for the orchestrator to post
 
@@ -216,9 +237,9 @@ Complete a task with one of four results. Called by workers (DEV/QA sub-agent se
 - `summary` (string, optional) — For the Telegram announcement
 
 **Results:**
-- **DEV "done"** — Pulls latest code, moves label `Doing` → `To Test`, deactivates worker. If `autoChain` enabled, automatically dispatches QA (grok).
+- **DEV "done"** — Pulls latest code, moves label `Doing` → `To Test`, deactivates worker. If `autoChain` enabled, automatically dispatches QA.
 - **QA "pass"** — Moves label `Testing` → `Done`, closes issue, deactivates worker
-- **QA "fail"** — Moves label `Testing` → `To Improve`, reopens issue. If `autoChain` enabled, automatically dispatches DEV fix (reuses previous model).
+- **QA "fail"** — Moves label `Testing` → `To Improve`, reopens issue. If `autoChain` enabled, automatically dispatches DEV fix (reuses previous DEV tier).
 - **QA "refine"** — Moves label `Testing` → `Refining`, awaits human decision
 
 ### `task_create`
@@ -284,24 +305,29 @@ Register a new project with DevClaw. Creates all required issue tracker labels (
 Every tool call automatically appends an NDJSON entry to `memory/audit.log`. No manual logging required from the orchestrator agent.
 
 ```jsonl
-{"ts":"2026-02-08T10:30:00Z","event":"task_pickup","project":"my-webapp","issue":42,"role":"dev","model":"sonnet","sessionAction":"send"}
-{"ts":"2026-02-08T10:30:01Z","event":"model_selection","issue":42,"role":"dev","selected":"sonnet","reason":"Standard dev task"}
+{"ts":"2026-02-08T10:30:00Z","event":"task_pickup","project":"my-webapp","issue":42,"role":"dev","tier":"medior","sessionAction":"send"}
+{"ts":"2026-02-08T10:30:01Z","event":"model_selection","issue":42,"role":"dev","tier":"medior","reason":"Standard dev task"}
 {"ts":"2026-02-08T10:45:00Z","event":"task_complete","project":"my-webapp","issue":42,"role":"dev","result":"done"}
 ```
 
-## Installation
+## Quick start
 
 ```bash
-# Local (place in extensions directory — auto-discovered)
+# 1. Install the plugin
 cp -r devclaw ~/.openclaw/extensions/
 
-# From npm (future)
-openclaw plugins install @openclaw/devclaw
+# 2. Run setup (interactive — creates agent, configures models, writes workspace files)
+openclaw devclaw setup
+
+# 3. Add bot to Telegram group, then register a project
+# (via the agent in Telegram)
 ```
+
+See the [Onboarding Guide](docs/ONBOARDING.md) for detailed instructions.
 
 ## Configuration
 
-Optional config in `openclaw.json`:
+Model tier configuration in `openclaw.json`:
 
 ```json
 {
@@ -309,7 +335,12 @@ Optional config in `openclaw.json`:
     "entries": {
       "devclaw": {
         "config": {
-          "glabPath": "/usr/local/bin/glab"
+          "models": {
+            "junior": "anthropic/claude-haiku-4-5",
+            "medior": "anthropic/claude-sonnet-4-5",
+            "senior": "anthropic/claude-opus-4-5",
+            "qa": "anthropic/claude-sonnet-4-5"
+          }
         }
       }
     }
@@ -325,7 +356,7 @@ Restrict tools to your orchestrator agent only:
     "list": [{
       "id": "my-orchestrator",
       "tools": {
-        "allow": ["task_pickup", "task_complete", "task_create", "queue_status", "session_health", "project_register"]
+        "allow": ["devclaw_setup", "task_pickup", "task_complete", "task_create", "queue_status", "session_health", "project_register"]
       }
     }]
   }
@@ -359,7 +390,6 @@ workspace/
 - [OpenClaw](https://openclaw.ai)
 - Node.js >= 20
 - [`glab`](https://gitlab.com/gitlab-org/cli) CLI installed and authenticated (GitLab provider), or [`gh`](https://cli.github.com) CLI (GitHub provider)
-- A `memory/projects.json` in the orchestrator agent's workspace
 
 ## License
 

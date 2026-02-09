@@ -13,6 +13,8 @@ import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../gitlab.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
+import { DEV_TIERS, QA_TIERS } from "../tiers.js";
+import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.js";
 
 /**
  * Ensure default role files exist, then copy them into the project's role directory.
@@ -63,31 +65,6 @@ async function scaffoldRoleFiles(workspaceDir: string, projectName: string): Pro
 
   return created;
 }
-
-const DEFAULT_DEV_INSTRUCTIONS = `# DEV Worker Instructions
-
-- Work in a git worktree (never switch branches in the main repo)
-- Run tests before completing
-- Create an MR/PR to the base branch and merge it
-- Clean up the worktree after merging
-- When done, call task_complete with role "dev", result "done", and a brief summary
-- If you discover unrelated bugs, call task_create to file them
-- Do NOT call task_pickup, queue_status, session_health, or project_register
-`;
-
-const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
-
-- Pull latest from the base branch
-- Run tests and linting
-- Verify the changes address the issue requirements
-- Check for regressions in related functionality
-- When done, call task_complete with role "qa" and one of:
-  - result "pass" if everything looks good
-  - result "fail" with specific issues if problems found
-  - result "refine" if you need human input to decide
-- If you discover unrelated bugs, call task_create to file them
-- Do NOT call task_pickup, queue_status, session_health, or project_register
-`;
 
 export function createProjectRegisterTool(api: OpenClawPluginApi) {
   return (ctx: OpenClawPluginToolContext) => ({
@@ -186,8 +163,8 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         baseBranch,
         deployBranch,
         autoChain: false,
-        dev: emptyWorkerState(["haiku", "sonnet", "opus"]),
-        qa: emptyWorkerState(["grok"]),
+        dev: emptyWorkerState([...DEV_TIERS]),
+        qa: emptyWorkerState([...QA_TIERS]),
       };
 
       await writeProjects(workspaceDir, data);

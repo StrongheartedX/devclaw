@@ -4,6 +4,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
+import { TIER_MIGRATION } from "./tiers.js";
 
 export type WorkerState = {
   active: boolean;
@@ -30,41 +31,64 @@ export type ProjectsData = {
 };
 
 /**
- * Migrate old WorkerState schema (sessionId field) to new sessions map.
- * Called transparently on read — old data is converted in memory,
- * persisted on next write.
+ * Migrate old WorkerState schema to current format.
+ *
+ * Handles two migrations:
+ * 1. Old sessionId field → sessions map (pre-sessions era)
+ * 2. Model-alias session keys → tier-name keys (haiku→junior, sonnet→medior, etc.)
  */
 function migrateWorkerState(worker: Record<string, unknown>): WorkerState {
-  // Already migrated — has sessions map
-  if (worker.sessions && typeof worker.sessions === "object") {
-    return worker as unknown as WorkerState;
+  // Migration 1: old sessionId field → sessions map
+  if (!worker.sessions || typeof worker.sessions !== "object") {
+    const sessionId = worker.sessionId as string | null;
+    const model = worker.model as string | null;
+    const sessions: Record<string, string | null> = {};
+
+    if (sessionId && model) {
+      // Apply tier migration to the model key too
+      const tierKey = TIER_MIGRATION[model] ?? model;
+      sessions[tierKey] = sessionId;
+    }
+
+    return {
+      active: worker.active as boolean,
+      issueId: worker.issueId as string | null,
+      startTime: worker.startTime as string | null,
+      model: model ? (TIER_MIGRATION[model] ?? model) : null,
+      sessions,
+    };
   }
 
-  // Old schema: { sessionId, model, ... }
-  const sessionId = worker.sessionId as string | null;
-  const model = worker.model as string | null;
-  const sessions: Record<string, string | null> = {};
+  // Migration 2: model-alias session keys → tier-name keys
+  const oldSessions = worker.sessions as Record<string, string | null>;
+  const needsMigration = Object.keys(oldSessions).some((key) => key in TIER_MIGRATION);
 
-  if (sessionId && model) {
-    sessions[model] = sessionId;
+  if (needsMigration) {
+    const newSessions: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(oldSessions)) {
+      const newKey = TIER_MIGRATION[key] ?? key;
+      newSessions[newKey] = value;
+    }
+    const model = worker.model as string | null;
+    return {
+      active: worker.active as boolean,
+      issueId: worker.issueId as string | null,
+      startTime: worker.startTime as string | null,
+      model: model ? (TIER_MIGRATION[model] ?? model) : null,
+      sessions: newSessions,
+    };
   }
 
-  return {
-    active: worker.active as boolean,
-    issueId: worker.issueId as string | null,
-    startTime: worker.startTime as string | null,
-    model,
-    sessions,
-  };
+  return worker as unknown as WorkerState;
 }
 
 /**
- * Create a blank WorkerState with null sessions for given model aliases.
+ * Create a blank WorkerState with null sessions for given tier names.
  */
-export function emptyWorkerState(aliases: string[]): WorkerState {
+export function emptyWorkerState(tiers: string[]): WorkerState {
   const sessions: Record<string, string | null> = {};
-  for (const alias of aliases) {
-    sessions[alias] = null;
+  for (const tier of tiers) {
+    sessions[tier] = null;
   }
   return {
     active: false,
@@ -76,13 +100,13 @@ export function emptyWorkerState(aliases: string[]): WorkerState {
 }
 
 /**
- * Get session key for a specific model alias from a worker's sessions map.
+ * Get session key for a specific tier from a worker's sessions map.
  */
 export function getSessionForModel(
   worker: WorkerState,
-  modelAlias: string,
+  tier: string,
 ): string | null {
-  return worker.sessions[modelAlias] ?? null;
+  return worker.sessions[tier] ?? null;
 }
 
 function projectsPath(workspaceDir: string): string {
@@ -163,7 +187,7 @@ export async function updateWorker(
 
 /**
  * Mark a worker as active with a new task.
- * Sets active=true, issueId, model. Stores session key in sessions[model].
+ * Sets active=true, issueId, model (tier). Stores session key in sessions[tier].
  */
 export async function activateWorker(
   workspaceDir: string,
@@ -181,7 +205,7 @@ export async function activateWorker(
     issueId: params.issueId,
     model: params.model,
   };
-  // Store session key in the sessions map for this model
+  // Store session key in the sessions map for this tier
   if (params.sessionKey !== undefined) {
     updates.sessions = { [params.model]: params.sessionKey };
   }

@@ -5,13 +5,37 @@ import { createQueueStatusTool } from "./lib/tools/queue-status.js";
 import { createSessionHealthTool } from "./lib/tools/session-health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createTaskCreateTool } from "./lib/tools/task-create.js";
+import { createSetupTool } from "./lib/tools/devclaw-setup.js";
+import { runCli } from "./lib/cli.js";
 
 const plugin = {
   id: "devclaw",
   name: "DevClaw",
   description:
-    "Multi-project dev/qa pipeline orchestration with GitHub/GitLab integration, model selection, and audit logging.",
-  configSchema: {},
+    "Multi-project dev/qa pipeline orchestration with GitHub/GitLab integration, developer tiers, and audit logging.",
+  configSchema: {
+    type: "object",
+    properties: {
+      models: {
+        type: "object",
+        description: "Model mapping per developer tier",
+        properties: {
+          junior: { type: "string", description: "Junior dev model" },
+          medior: { type: "string", description: "Medior dev model" },
+          senior: { type: "string", description: "Senior dev model" },
+          qa: { type: "string", description: "QA engineer model" },
+        },
+      },
+      glabPath: {
+        type: "string",
+        description: "Path to glab CLI binary. Defaults to 'glab' on PATH.",
+      },
+      ghPath: {
+        type: "string",
+        description: "Path to gh CLI binary. Defaults to 'gh' on PATH.",
+      },
+    },
+  },
 
   register(api: OpenClawPluginApi) {
     // Agent tools (primary interface — agent calls these directly)
@@ -33,8 +57,19 @@ const plugin = {
     api.registerTool(createTaskCreateTool(api), {
       names: ["task_create"],
     });
+    api.registerTool(createSetupTool(api), {
+      names: ["devclaw_setup"],
+    });
 
-    api.logger.info("DevClaw plugin registered (6 tools)");
+    // CLI commands
+    api.registerCli("setup", {
+      description: "Set up DevClaw: create agent, configure models, write workspace files",
+      run: async (argv: string[]) => {
+        await runCli(argv);
+      },
+    });
+
+    api.logger.info("DevClaw plugin registered (7 tools, 1 CLI command)");
   },
 };
 

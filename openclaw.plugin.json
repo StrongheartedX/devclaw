@@ -1,21 +1,27 @@
 {
   "id": "devclaw",
   "name": "DevClaw",
-  "description": "Multi-project dev/qa pipeline orchestration for OpenClaw. Atomic task pickup, completion, queue status, and session health tools.",
+  "description": "Multi-project dev/qa pipeline orchestration for OpenClaw. Developer tiers, atomic task management, session health, and audit logging.",
   "configSchema": {
     "type": "object",
-    "additionalProperties": false,
     "properties": {
-      "modelSelection": {
+      "models": {
         "type": "object",
+        "description": "Model mapping per developer tier (junior, medior, senior, qa)",
         "properties": {
-          "enabled": { "type": "boolean" },
-          "analyzerModel": { "type": "string" }
+          "junior": { "type": "string", "description": "Junior dev model (default: anthropic/claude-haiku-4-5)" },
+          "medior": { "type": "string", "description": "Medior dev model (default: anthropic/claude-sonnet-4-5)" },
+          "senior": { "type": "string", "description": "Senior dev model (default: anthropic/claude-opus-4-5)" },
+          "qa": { "type": "string", "description": "QA engineer model (default: anthropic/claude-sonnet-4-5)" }
         }
       },
       "glabPath": {
         "type": "string",
         "description": "Path to glab CLI binary. Defaults to 'glab' on PATH."
+      },
+      "ghPath": {
+        "type": "string",
+        "description": "Path to gh CLI binary. Defaults to 'gh' on PATH."
       }
     }
   }

@@ -23,7 +23,7 @@ import { dispatchTask } from "../dispatch.js";
 export function createTaskPickupTool(api: OpenClawPluginApi) {
   return (ctx: OpenClawPluginToolContext) => ({
     name: "task_pickup",
-    description: `Pick up a task from the issue queue for a DEV or QA worker. Handles everything end-to-end: label transition, model selection, session creation/reuse, task dispatch, state update, and audit logging. The orchestrator should analyze the issue and pass the appropriate model. Returns an announcement for the agent to post — no further session actions needed.`,
+    description: `Pick up a task from the issue queue for a DEV or QA worker. Handles everything end-to-end: label transition, tier assignment, session creation/reuse, task dispatch, state update, and audit logging. The orchestrator should analyze the issue and pass the appropriate developer tier. Returns an announcement for the agent to post — no further session actions needed.`,
     parameters: {
       type: "object",
       required: ["issueId", "role", "projectGroupId"],
@@ -36,7 +36,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         },
         model: {
           type: "string",
-          description: "Model alias to use (e.g. haiku, sonnet, opus, grok). The orchestrator should analyze the issue complexity and choose. Falls back to keyword heuristic if omitted.",
+          description: "Developer tier (junior, medior, senior, qa). The orchestrator should evaluate the task complexity and choose the right tier. Falls back to keyword heuristic if omitted.",
         },
       },
     },
@@ -101,12 +101,13 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         modelSource = "llm";
       } else {
         const selected = selectModel(issue.title, issue.description ?? "", role);
-        modelAlias = selected.alias;
+        modelAlias = selected.tier;
         modelReason = selected.reason;
         modelSource = "heuristic";
       }
 
       // 5. Dispatch via shared logic
+      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
       const dispatchResult = await dispatchTask({
         workspaceDir,
         agentId: ctx.agentId,
@@ -122,6 +123,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         toLabel: targetLabel,
         transitionLabel: (id, from, to) =>
           transitionLabel(id, from as StateLabel, to as StateLabel, glabOpts),
+        pluginConfig,
       });
 
       // 6. Build result

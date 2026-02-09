@@ -18,15 +18,9 @@ import {
 } from "./projects.js";
 import { selectModel } from "./model-selector.js";
 import { log as auditLog } from "./audit.js";
+import { resolveModel, TIER_EMOJI, isTier } from "./tiers.js";
 
 const execFileAsync = promisify(execFile);
-
-export const MODEL_MAP: Record<string, string> = {
-  haiku: "anthropic/claude-haiku-4-5",
-  sonnet: "anthropic/claude-sonnet-4-5",
-  opus: "anthropic/claude-opus-4-5",
-  grok: "github-copilot/grok-code-fast-1",
-};
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -38,6 +32,7 @@ export type DispatchOpts = {
   issueDescription: string;
   issueUrl: string;
   role: "dev" | "qa";
+  /** Developer tier (junior, medior, senior, qa) or raw model ID */
   modelAlias: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
   fromLabel: string;
@@ -45,6 +40,8 @@ export type DispatchOpts = {
   toLabel: string;
   /** Function to transition labels (injected to avoid gitlab.ts dependency) */
   transitionLabel: (issueId: number, from: string, to: string) => Promise<void>;
+  /** Plugin config for model resolution */
+  pluginConfig?: Record<string, unknown>;
 };
 
 export type DispatchResult = {
@@ -118,9 +115,10 @@ export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> 
     workspaceDir, agentId, groupId, project, issueId,
     issueTitle, issueDescription, issueUrl,
     role, modelAlias, fromLabel, toLabel, transitionLabel,
+    pluginConfig,
   } = opts;
 
-  const fullModel = MODEL_MAP[modelAlias] ?? modelAlias;
+  const fullModel = resolveModel(modelAlias, pluginConfig);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForModel(worker, modelAlias);
   const sessionAction = existingSessionKey ? "send" : "spawn";
@@ -210,7 +208,7 @@ export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> 
     issue: issueId,
     issueTitle,
     role,
-    model: modelAlias,
+    tier: modelAlias,
     sessionAction,
     sessionKey,
     labelTransition: `${fromLabel} → ${toLabel}`,
@@ -219,14 +217,14 @@ export async function dispatchTask(opts: DispatchOpts): Promise<DispatchResult> 
   await auditLog(workspaceDir, "model_selection", {
     issue: issueId,
     role,
-    selected: modelAlias,
+    tier: modelAlias,
     fullModel,
   });
 
   // Build announcement
-  const emoji = role === "dev"
-    ? (modelAlias === "haiku" ? "⚡" : modelAlias === "opus" ? "🧠" : "🔧")
-    : "🔍";
+  const emoji = isTier(modelAlias)
+    ? TIER_EMOJI[modelAlias]
+    : (role === "qa" ? "🔍" : "🔧");
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   const announcement = `${emoji} ${actionVerb} ${role.toUpperCase()} (${modelAlias}) for #${issueId}: ${issueTitle}`;
 

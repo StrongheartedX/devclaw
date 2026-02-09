@@ -1,11 +1,11 @@
 /**
  * Model selection for dev/qa tasks.
- * MVP: Simple heuristic-based selection. LLM-based analysis can be added later.
+ * Keyword heuristic fallback — used when the orchestrator doesn't specify a tier.
+ * Returns tier names (junior, medior, senior, qa) instead of model aliases.
  */
 
 export type ModelRecommendation = {
-  model: string;
-  alias: string;
+  tier: string;
   reason: string;
 };
 
@@ -39,13 +39,13 @@ const COMPLEX_KEYWORDS = [
 ];
 
 /**
- * Select appropriate model based on task description.
+ * Select appropriate developer tier based on task description.
  *
- * Model tiers:
- * - haiku: very simple (typos, single-file fixes, CSS tweaks)
- * - grok: default QA (code inspection, validation, test runs)
- * - sonnet: default DEV (features, bug fixes, multi-file changes)
- * - opus: deep/architectural (system-wide refactoring, novel design)
+ * Developer tiers:
+ * - junior: very simple (typos, single-file fixes, CSS tweaks)
+ * - medior: standard DEV (features, bug fixes, multi-file changes)
+ * - senior: deep/architectural (system-wide refactoring, novel design)
+ * - qa: all QA tasks (code inspection, validation, test runs)
  */
 export function selectModel(
   issueTitle: string,
@@ -54,9 +54,8 @@ export function selectModel(
 ): ModelRecommendation {
   if (role === "qa") {
     return {
-      model: "github-copilot/grok-code-fast-1",
-      alias: "grok",
-      reason: "Default QA model for code inspection and validation",
+      tier: "qa",
+      reason: "Default QA tier for code inspection and validation",
     };
   }
 
@@ -67,8 +66,7 @@ export function selectModel(
   const isSimple = SIMPLE_KEYWORDS.some((kw) => text.includes(kw));
   if (isSimple && wordCount < 100) {
     return {
-      model: "anthropic/claude-haiku-4-5",
-      alias: "haiku",
+      tier: "junior",
       reason: `Simple task detected (keywords: ${SIMPLE_KEYWORDS.filter((kw) => text.includes(kw)).join(", ")})`,
     };
   }
@@ -77,16 +75,14 @@ export function selectModel(
   const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
   if (isComplex || wordCount > 500) {
     return {
-      model: "anthropic/claude-opus-4-5",
-      alias: "opus",
+      tier: "senior",
       reason: `Complex task detected (${isComplex ? "keywords: " + COMPLEX_KEYWORDS.filter((kw) => text.includes(kw)).join(", ") : "long description"})`,
     };
   }
 
-  // Default: sonnet for standard dev work
+  // Default: medior for standard dev work
   return {
-    model: "anthropic/claude-sonnet-4-5",
-    alias: "sonnet",
+    tier: "medior",
     reason: "Standard dev task — multi-file changes, features, bug fixes",
   };
 }
