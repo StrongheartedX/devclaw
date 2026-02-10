@@ -64,12 +64,16 @@ export function createQueueStatusTool(api: OpenClawPluginApi) {
           dev: {
             active: project.dev.active,
             sessionId: project.dev.sessionId,
+            tier: project.dev.tier,
+            sessions: project.dev.sessions,
             issueId: project.dev.issueId,
             model: project.dev.model,
           },
           qa: {
             active: project.qa.active,
             sessionId: project.qa.sessionId,
+            tier: project.qa.tier,
+            sessions: project.qa.sessions,
             issueId: project.qa.issueId,
             model: project.qa.model,
           },

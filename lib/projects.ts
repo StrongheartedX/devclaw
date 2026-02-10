@@ -7,10 +7,12 @@ import path from "node:path";
 
 export type WorkerState = {
   active: boolean;
-  sessionId: string | null;
+  sessionId: string | null; // Deprecated: use sessions[tier] instead
+  sessions: Record<string, { sessionId: string; startTime: string } | null>;
   issueId: string | null;
   startTime: string | null;
   model: string | null;
+  tier: string | null;
 };
 
 export type Project = {
@@ -63,6 +65,17 @@ export function getWorker(
 }
 
 /**
+ * Get the session ID for a specific tier from a worker's sessions.
+ * Returns null if no session exists for that tier.
+ */
+export function getTierSession(
+  worker: WorkerState,
+  tier: string,
+): { sessionId: string; startTime: string } | null {
+  return worker.sessions?.[tier] ?? null;
+}
+
+/**
  * Update worker state for a project. Only provided fields are updated.
  * This prevents accidentally nulling out fields that should be preserved.
  */
@@ -87,7 +100,7 @@ export async function updateWorker(
 
 /**
  * Mark a worker as active with a new task.
- * Sets active=true, issueId, model. Preserves sessionId and startTime if reusing.
+ * Sets active=true, issueId, model, tier. Preserves tier sessions.
  */
 export async function activateWorker(
   workspaceDir: string,
@@ -96,6 +109,7 @@ export async function activateWorker(
   params: {
     issueId: string;
     model: string;
+    tier: string;
     sessionId?: string;
     startTime?: string;
   },
@@ -104,28 +118,62 @@ export async function activateWorker(
     active: true,
     issueId: params.issueId,
     model: params.model,
+    tier: params.tier,
   };
-  // Only set sessionId and startTime if provided (new spawn)
-  if (params.sessionId !== undefined) {
-    updates.sessionId = params.sessionId;
-  }
-  if (params.startTime !== undefined) {
-    updates.startTime = params.startTime;
+  // Save session to tier-specific slot if provided
+  if (params.sessionId !== undefined && params.startTime !== undefined) {
+    const tierSession = { sessionId: params.sessionId, startTime: params.startTime };
+    updates.sessions = { [params.tier]: tierSession };
+    updates.sessionId = params.sessionId; // Keep for backward compatibility
   }
   return updateWorker(workspaceDir, groupId, role, updates);
 }
 
 /**
  * Mark a worker as inactive after task completion.
- * Clears issueId and active, PRESERVES sessionId, model, startTime for reuse.
+ * Clears issueId and active, PRESERVES tier sessions for reuse.
+ * Saves current session to tier slot if tier is set.
  */
 export async function deactivateWorker(
   workspaceDir: string,
   groupId: string,
   role: "dev" | "qa",
+  params?: {
+    tier?: string;
+    sessionId?: string;
+    startTime?: string;
+  },
 ): Promise<ProjectsData> {
-  return updateWorker(workspaceDir, groupId, role, {
+  const data = await readProjects(workspaceDir);
+  const project = data.projects[groupId];
+  if (!project) {
+    throw new Error(`Project not found for groupId: ${groupId}`);
+  }
+
+  const worker = project[role];
+  const updates: Partial<WorkerState> = {
     active: false,
     issueId: null,
-  });
+    startTime: null,
+    model: null,
+    tier: null,
+    // sessionId is NOT cleared - kept for backward compatibility
+  };
+
+  // Save session to tier slot for future reuse
+  const tier = params?.tier ?? worker.tier;
+  const sessionId = params?.sessionId ?? worker.sessionId;
+  const startTime = params?.startTime ?? worker.startTime;
+
+  if (tier && sessionId && startTime) {
+    const tierSession = { sessionId, startTime };
+    updates.sessions = {
+      ...worker.sessions,
+      [tier]: tierSession,
+    };
+  }
+
+  project[role] = { ...worker, ...updates };
+  await writeProjects(workspaceDir, data);
+  return data;
 }

@@ -109,8 +109,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           output.gitPull = `warning: ${(err as Error).message}`;
         }
 
-        // Deactivate DEV (preserves sessionId, model, startTime)
-        await deactivateWorker(workspaceDir, groupId, "dev");
+        // Deactivate DEV (preserves tier session for reuse)
+        await deactivateWorker(workspaceDir, groupId, "dev", {
+          tier: worker.tier ?? undefined,
+          sessionId: worker.sessionId ?? undefined,
+          startTime: worker.startTime ?? undefined,
+        });
 
         // Transition label: Doing → To Test
         await transitionLabel(issueId, "Doing", "To Test", glabOpts);
@@ -121,8 +125,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === QA PASS ===
       if (role === "qa" && result === "pass") {
-        // Deactivate QA
-        await deactivateWorker(workspaceDir, groupId, "qa");
+        // Deactivate QA (preserves tier session for reuse)
+        await deactivateWorker(workspaceDir, groupId, "qa", {
+          tier: worker.tier ?? undefined,
+          sessionId: worker.sessionId ?? undefined,
+          startTime: worker.startTime ?? undefined,
+        });
 
         // Transition label: Testing → Done, close issue
         await transitionLabel(issueId, "Testing", "Done", glabOpts);
@@ -135,8 +143,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === QA FAIL ===
       if (role === "qa" && result === "fail") {
-        // Deactivate QA
-        await deactivateWorker(workspaceDir, groupId, "qa");
+        // Deactivate QA (preserves tier session for reuse)
+        await deactivateWorker(workspaceDir, groupId, "qa", {
+          tier: worker.tier ?? undefined,
+          sessionId: worker.sessionId ?? undefined,
+          startTime: worker.startTime ?? undefined,
+        });
 
         // Transition label: Testing → To Improve, reopen issue
         await transitionLabel(issueId, "Testing", "To Improve", glabOpts);
@@ -146,19 +158,21 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         const issue = await getIssue(issueId, glabOpts);
         const devModel = selectModel(issue.title, issue.description ?? "", "dev");
         const devWorker = getWorker(project, "dev");
+        const devTierSession = devWorker.sessions?.[devModel.alias];
 
         output.labelTransition = "Testing → To Improve";
         output.issueReopened = true;
         output.announcement = `❌ QA FAIL #${issueId}${summary ? ` — ${summary}` : ""}. Sent back to DEV.`;
 
-        // If DEV session exists, prepare reuse instructions
-        if (devWorker.sessionId) {
+        // If DEV session exists for this tier, prepare reuse instructions
+        const devSessionId = devTierSession?.sessionId ?? devWorker.sessionId;
+        if (devSessionId) {
           output.devFixInstructions =
-            `Send QA feedback to existing DEV session ${devWorker.sessionId}. ` +
+            `Send QA feedback to existing DEV session ${devSessionId}. ` +
             `If model "${devModel.alias}" differs from "${devWorker.model}", call sessions.patch first. ` +
             `Then sessions_send with QA failure details. ` +
             `DEV will pick up from To Improve → Doing automatically.`;
-          output.devSessionId = devWorker.sessionId;
+          output.devSessionId = devSessionId;
           output.devModel = devModel.alias;
         } else {
           output.devFixInstructions =
@@ -169,8 +183,12 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
       // === QA REFINE ===
       if (role === "qa" && result === "refine") {
-        // Deactivate QA
-        await deactivateWorker(workspaceDir, groupId, "qa");
+        // Deactivate QA (preserves tier session for reuse)
+        await deactivateWorker(workspaceDir, groupId, "qa", {
+          tier: worker.tier ?? undefined,
+          sessionId: worker.sessionId ?? undefined,
+          startTime: worker.startTime ?? undefined,
+        });
 
         // Transition label: Testing → Refining
         await transitionLabel(issueId, "Testing", "Refining", glabOpts);

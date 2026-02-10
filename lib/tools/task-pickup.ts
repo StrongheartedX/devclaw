@@ -11,6 +11,7 @@ import {
   readProjects,
   getProject,
   getWorker,
+  getTierSession,
   activateWorker,
 } from "../projects.js";
 import {
@@ -93,7 +94,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         );
       }
 
-      // 4. Select model
+      // 4. Select model and determine tier
       const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
       let selectedModel = selectModel(issue.title, issue.description ?? "", role);
       if (modelOverride) {
@@ -103,9 +104,11 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
           reason: `User override: ${modelOverride}`,
         };
       }
+      const tier = selectedModel.alias; // haiku, sonnet, opus, grok
 
-      // 5. Determine session action (spawn vs reuse)
-      const existingSessionId = worker.sessionId;
+      // 5. Determine session action (spawn vs reuse) - check tier-specific session
+      const existingTierSession = getTierSession(worker, tier);
+      const existingSessionId = existingTierSession?.sessionId ?? worker.sessionId; // Fallback to legacy sessionId
       const sessionAction = existingSessionId ? "send" : "spawn";
 
       // 6. Transition GitLab label
@@ -118,13 +121,17 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         await activateWorker(workspaceDir, groupId, role, {
           issueId: String(issueId),
           model: selectedModel.alias,
+          tier,
           startTime: now,
         });
       } else {
-        // Reuse existing session — preserve sessionId and startTime
+        // Reuse existing session — preserve sessionId and startTime from tier slot
         await activateWorker(workspaceDir, groupId, role, {
           issueId: String(issueId),
           model: selectedModel.alias,
+          tier,
+          sessionId: existingTierSession?.sessionId ?? worker.sessionId ?? undefined,
+          startTime: existingTierSession?.startTime ?? worker.startTime ?? undefined,
         });
       }
 
@@ -136,6 +143,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         issueTitle: issue.title,
         role,
         model: selectedModel.alias,
+        tier,
         modelReason: selectedModel.reason,
         sessionAction,
         sessionId: existingSessionId,
@@ -166,6 +174,7 @@ export function createTaskPickupTool(api: OpenClawPluginApi) {
         issueId,
         issueTitle: issue.title,
         role,
+        tier,
         model: selectedModel.alias,
         fullModel: selectedModel.model,
         modelReason: selectedModel.reason,

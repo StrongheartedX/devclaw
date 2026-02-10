@@ -9,7 +9,7 @@
  * call sessions_list directly (it's an agent-level tool).
  */
 import type { OpenClawPluginApi, OpenClawPluginToolContext } from "openclaw/plugin-sdk";
-import { readProjects, updateWorker } from "../projects.js";
+import { readProjects, updateWorker, getTierSession } from "../projects.js";
 import { transitionLabel, resolveRepoPath, type StateLabel } from "../gitlab.js";
 import { log as auditLog } from "../audit.js";
 
@@ -54,8 +54,13 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
         for (const role of ["dev", "qa"] as const) {
           const worker = project[role];
 
+          // Get current session ID (from tier slot if tier is set, otherwise legacy sessionId)
+          const currentSessionId = worker.tier
+            ? getTierSession(worker, worker.tier)?.sessionId ?? worker.sessionId
+            : worker.sessionId;
+
           // Check 1: Active but no sessionId
-          if (worker.active && !worker.sessionId) {
+          if (worker.active && !currentSessionId) {
             const issue: Record<string, unknown> = {
               type: "active_no_session",
               severity: "critical",
@@ -69,6 +74,7 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
               await updateWorker(workspaceDir, groupId, role, {
                 active: false,
                 issueId: null,
+                tier: null,
               });
               issue.fixed = true;
               fixesApplied++;
@@ -79,9 +85,9 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
           // Check 2: Active with sessionId but session is dead (zombie)
           if (
             worker.active &&
-            worker.sessionId &&
+            currentSessionId &&
             activeSessions.length > 0 &&
-            !activeSessions.includes(worker.sessionId)
+            !activeSessions.includes(currentSessionId)
           ) {
             const issue: Record<string, unknown> = {
               type: "zombie_session",
@@ -89,8 +95,8 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
               project: project.name,
               groupId,
               role,
-              sessionId: worker.sessionId,
-              message: `${role.toUpperCase()} session ${worker.sessionId} not found in active sessions`,
+              sessionId: currentSessionId,
+              message: `${role.toUpperCase()} session ${currentSessionId} not found in active sessions`,
             };
 
             if (autoFix) {
@@ -110,6 +116,8 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
               await updateWorker(workspaceDir, groupId, role, {
                 active: false,
                 issueId: null,
+                sessionId: null,
+                tier: null,
               });
               issue.fixed = true;
               fixesApplied++;
@@ -131,7 +139,7 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
                 groupId,
                 role,
                 hoursActive: Math.round(hoursActive * 10) / 10,
-                sessionId: worker.sessionId,
+                sessionId: currentSessionId,
                 issueId: worker.issueId,
                 message: `${role.toUpperCase()} has been active for ${Math.round(hoursActive * 10) / 10}h — may need attention`,
               });
@@ -158,6 +166,30 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
               fixesApplied++;
             }
             issues.push(issue);
+          }
+
+          // Check 5: Stale tier sessions (sessions for tiers not used recently > 24 hours)
+          if (worker.sessions) {
+            for (const [tier, tierSession] of Object.entries(worker.sessions)) {
+              if (!tierSession) continue;
+              const tierStartMs = new Date(tierSession.startTime).getTime();
+              const nowMs = Date.now();
+              const hoursSinceUse = (nowMs - tierStartMs) / (1000 * 60 * 60);
+
+              if (hoursSinceUse > 24) {
+                issues.push({
+                  type: "stale_tier_session",
+                  severity: "info",
+                  project: project.name,
+                  groupId,
+                  role,
+                  tier,
+                  sessionId: tierSession.sessionId,
+                  hoursSinceUse: Math.round(hoursSinceUse * 10) / 10,
+                  message: `${role.toUpperCase()} tier "${tier}" session is stale (${Math.round(hoursSinceUse * 10) / 10}h old)`,
+                });
+              }
+            }
           }
         }
       }
