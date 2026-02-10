@@ -8,6 +8,7 @@ export const DEFAULT_DEV_INSTRUCTIONS = `# DEV Worker Instructions
 - Work in a git worktree (never switch branches in the main repo)
 - Run tests before completing
 - Create an MR/PR to the base branch and merge it
+- **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete - auto-closing bypasses QA validation.
 - Clean up the worktree after merging
 - When done, call task_complete with role "dev", result "done", and a brief summary
 - If you discover unrelated bugs, call task_create to file them
@@ -41,6 +42,7 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 - Branch naming: \`feature/<id>-<slug>\` or \`fix/<id>-<slug>\`
 - **DEV always works in a git worktree** (never switch branches in the main repo)
 - **DEV must merge to base branch** before announcing completion
+- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Instead use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state via task_complete — auto-closing bypasses QA validation.
 - **QA tests on the deployed version** and inspects code on the base branch
 - Always run tests before completing
 
