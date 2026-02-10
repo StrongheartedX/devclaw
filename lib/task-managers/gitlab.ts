@@ -73,7 +73,7 @@ export class GitLabProvider implements TaskManager {
       const { promisify } = await import("node:util");
       const execAsync = promisify(exec);
 
-      let cmd = `glab issue create --title "${title.replace(/"/g, '\\"')}" --description "$(cat ${tempFile})" --label "${label}" --output json`;
+      let cmd = `glab issue create --title "${title.replace(/"/g, '\\"')}" --description "$(cat ${tempFile})" --label "${label}"`;
       if (assignees && assignees.length > 0) {
         cmd += ` --assignee "${assignees.join(",")}"`;
       }
@@ -82,7 +82,13 @@ export class GitLabProvider implements TaskManager {
         cwd: this.repoPath,
         timeout: 30_000,
       });
-      return JSON.parse(stdout.trim()) as Issue;
+      // glab issue create returns the issue URL (e.g. https://gitlab.com/owner/repo/-/issues/42)
+      const match = stdout.trim().match(/\/issues\/(\d+)/);
+      if (!match) {
+        throw new Error(`Failed to parse issue number from created issue URL: ${stdout.trim()}`);
+      }
+      const issueId = parseInt(match[1], 10);
+      return this.getIssue(issueId);
     } finally {
       // Clean up temp file
       try {
