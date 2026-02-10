@@ -144,9 +144,9 @@ Workers call \`work_finish\` themselves — the label transition, state update, 
 
 The response includes \`tickPickups\` showing any tasks that were auto-dispatched. Post announcements from the tool response to Telegram.
 
-### Role Instructions
+### Prompt Instructions
 
-Workers receive role-specific instructions appended to their task message. These are loaded from \`roles/<project-name>/<role>.md\` in the workspace (with fallback to \`roles/default/<role>.md\`). \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
+Workers receive role-specific instructions appended to their task message. These are loaded from \`projects/prompts/<project-name>/<role>.md\` in the workspace. \`project_register\` scaffolds these files automatically — edit them to customize worker behavior per project.
 
 ### Heartbeats
 

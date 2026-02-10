@@ -20,32 +20,11 @@ import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.
 import { detectContext, generateGuardrails } from "../context-guard.js";
 
 /**
- * Ensure default role files exist, then copy them into the project's role directory.
+ * Scaffold project-specific prompt files.
  * Returns true if files were created, false if they already existed.
  */
-async function scaffoldRoleFiles(workspaceDir: string, projectName: string): Promise<boolean> {
-  const defaultDir = path.join(workspaceDir, "roles", "default");
-  const projectDir = path.join(workspaceDir, "roles", projectName);
-
-  // Ensure default role files exist
-  await fs.mkdir(defaultDir, { recursive: true });
-
-  const defaultDev = path.join(defaultDir, "dev.md");
-  const defaultQa = path.join(defaultDir, "qa.md");
-
-  try {
-    await fs.access(defaultDev);
-  } catch {
-    await fs.writeFile(defaultDev, DEFAULT_DEV_INSTRUCTIONS, "utf-8");
-  }
-
-  try {
-    await fs.access(defaultQa);
-  } catch {
-    await fs.writeFile(defaultQa, DEFAULT_QA_INSTRUCTIONS, "utf-8");
-  }
-
-  // Create project-specific role files (copy from default if not exist)
+async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
+  const projectDir = path.join(workspaceDir, "projects", "prompts", projectName);
   await fs.mkdir(projectDir, { recursive: true });
 
   const projectDev = path.join(projectDir, "dev.md");
@@ -55,14 +34,14 @@ async function scaffoldRoleFiles(workspaceDir: string, projectName: string): Pro
   try {
     await fs.access(projectDev);
   } catch {
-    await fs.copyFile(defaultDev, projectDev);
+    await fs.writeFile(projectDev, DEFAULT_DEV_INSTRUCTIONS, "utf-8");
     created = true;
   }
 
   try {
     await fs.access(projectQa);
   } catch {
-    await fs.copyFile(defaultQa, projectQa);
+    await fs.writeFile(projectQa, DEFAULT_QA_INSTRUCTIONS, "utf-8");
     created = true;
   }
 
@@ -212,8 +191,8 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
 
       await writeProjects(workspaceDir, data);
 
-      // 6. Scaffold role files
-      const rolesCreated = await scaffoldRoleFiles(workspaceDir, name);
+      // 6. Scaffold prompt files
+      const promptsCreated = await scaffoldPromptFiles(workspaceDir, name);
 
       // 7. Audit log
       await auditLog(workspaceDir, "project_register", {
@@ -226,8 +205,8 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
       });
 
       // 8. Return announcement
-      const rolesNote = rolesCreated ? " Role files scaffolded." : "";
-      const announcement = `📋 Project "${name}" registered for group ${groupName}. Labels created.${rolesNote} Ready for tasks.`;
+      const promptsNote = promptsCreated ? " Prompt files scaffolded." : "";
+      const announcement = `📋 Project "${name}" registered for group ${groupName}. Labels created.${promptsNote} Ready for tasks.`;
 
       return jsonResult({
         success: true,
@@ -237,7 +216,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         baseBranch,
         deployBranch,
         labelsCreated: 8,
-        rolesScaffolded: rolesCreated,
+        promptsScaffolded: promptsCreated,
         announcement,
         ...(contextInfo && { contextInfo }),
         contextGuidance: generateGuardrails(context),

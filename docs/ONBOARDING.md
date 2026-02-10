@@ -147,7 +147,7 @@ Tell the orchestrator agent to register a new project:
 The agent calls `project_register`, which atomically:
 - Validates the repo and auto-detects GitHub/GitLab from remote
 - Creates all 8 state labels (idempotent)
-- Scaffolds role instruction files (`roles/<project>/dev.md` and `qa.md`)
+- Scaffolds prompt instruction files (`projects/prompts/<project>/dev.md` and `qa.md`)
 - Adds the project entry to `projects.json` with `autoChain: false`
 - Logs the registration event
 
@@ -251,7 +251,7 @@ Change which model powers each tier in `openclaw.json`:
 | Channel binding analysis | Plugin (`analyze_channel_bindings`) | Detects channel conflicts, validates channel configuration |
 | Channel binding migration | Plugin (`devclaw_setup` with `migrateFrom`) | Automatically moves channel-wide bindings between agents |
 | Label setup | Plugin (`project_register`) | 8 labels, created idempotently via `IssueProvider` |
-| Role file scaffolding | Plugin (`project_register`) | Creates `roles/<project>/dev.md` and `qa.md` from defaults |
+| Prompt file scaffolding | Plugin (`project_register`) | Creates `projects/prompts/<project>/dev.md` and `qa.md` |
 | Project registration | Plugin (`project_register`) | Entry in `projects.json` with empty worker state |
 | Telegram group setup | You (once per project) | Add bot to group |
 | Issue creation | Plugin (`task_create`) | Orchestrator or workers create issues from chat |
@@ -260,7 +260,7 @@ Change which model powers each tier in `openclaw.json`:
 | State management | Plugin | Atomic read/write to `projects.json` |
 | Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
 | Task completion | Plugin (`task_complete`) | Workers self-report. Auto-chains if enabled. |
-| Role instructions | Plugin (`task_pickup`) | Loaded from `roles/<project>/<role>.md`, appended to task message |
+| Prompt instructions | Plugin (`task_pickup`) | Loaded from `projects/prompts/<project>/<role>.md`, appended to task message |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `session_health` checks active vs alive |
 | Queue scanning | Plugin | `queue_status` queries issue tracker per project |

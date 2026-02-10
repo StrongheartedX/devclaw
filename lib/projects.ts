@@ -72,7 +72,7 @@ export function getSessionForTier(
 }
 
 function projectsPath(workspaceDir: string): string {
-  return path.join(workspaceDir, "memory", "projects.json");
+  return path.join(workspaceDir, "projects", "projects.json");
 }
 
 export async function readProjects(workspaceDir: string): Promise<ProjectsData> {

@@ -140,7 +140,7 @@ You're in a **Telegram/WhatsApp group** bound to ${context.projectName ? `projec
 }
 
 /**
- * Find project name by matching groupId in memory/projects.json.
+ * Find project name by matching groupId in projects/projects.json.
  * The groupId (Telegram or WhatsApp) is the KEY in the projects Record.
  */
 async function findProjectByGroupId(
@@ -150,7 +150,7 @@ async function findProjectByGroupId(
   if (!workspaceDir) return undefined;
 
   try {
-    const projectsPath = path.join(workspaceDir, "memory", "projects.json");
+    const projectsPath = path.join(workspaceDir, "projects", "projects.json");
     const raw = await fs.readFile(projectsPath, "utf-8");
     const data = JSON.parse(raw) as {
       projects: Record<string, { name: string }>;

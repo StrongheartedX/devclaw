@@ -29,7 +29,7 @@ npm run test:ui
 **What's tested:**
 - First-time agent creation with default models
 - Channel binding creation (telegram/whatsapp)
-- Workspace file generation (AGENTS.md, HEARTBEAT.md, roles/, memory/)
+- Workspace file generation (AGENTS.md, HEARTBEAT.md, projects/, log/)
 - Plugin configuration initialization
 - Error handling: channel not configured
 - Error handling: channel disabled

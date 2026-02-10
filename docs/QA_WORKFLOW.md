@@ -95,9 +95,8 @@ As of [current date], QA workers are instructed via role templates to:
 - Include specific details about what was tested
 - Document results, environment, and any notes
 
-Role templates affected:
-- `roles/default/qa.md`
-- `roles/devclaw/qa.md`
+Prompt templates affected:
+- `projects/prompts/<project>/qa.md`
 - All project-specific QA templates should follow this pattern
 
 ## Best Practices
