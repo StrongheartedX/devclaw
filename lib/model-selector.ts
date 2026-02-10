@@ -1,7 +1,7 @@
 /**
  * Model selection for dev/qa tasks.
  * Keyword heuristic fallback — used when the orchestrator doesn't specify a tier.
- * Returns tier names (junior, medior, senior, qa) instead of model aliases.
+ * Returns full tier names (dev.junior, dev.medior, dev.senior, qa.reviewer, qa.tester).
  */
 
 export type TierRecommendation = {
@@ -42,10 +42,11 @@ const COMPLEX_KEYWORDS = [
  * Select appropriate developer tier based on task description.
  *
  * Developer tiers:
- * - junior: very simple (typos, single-file fixes, CSS tweaks)
- * - medior: standard DEV (features, bug fixes, multi-file changes)
- * - senior: deep/architectural (system-wide refactoring, novel design)
- * - qa: all QA tasks (code inspection, validation, test runs)
+ * - dev.junior: very simple (typos, single-file fixes, CSS tweaks)
+ * - dev.medior: standard DEV (features, bug fixes, multi-file changes)
+ * - dev.senior: deep/architectural (system-wide refactoring, novel design)
+ * - qa.reviewer: QA code inspection and validation
+ * - qa.tester: QA manual testing
  */
 export function selectTier(
   issueTitle: string,
@@ -54,7 +55,7 @@ export function selectTier(
 ): TierRecommendation {
   if (role === "qa") {
     return {
-      tier: "qa",
+      tier: "qa.reviewer",
       reason: "Default QA tier for code inspection and validation",
     };
   }
@@ -66,7 +67,7 @@ export function selectTier(
   const isSimple = SIMPLE_KEYWORDS.some((kw) => text.includes(kw));
   if (isSimple && wordCount < 100) {
     return {
-      tier: "junior",
+      tier: "dev.junior",
       reason: `Simple task detected (keywords: ${SIMPLE_KEYWORDS.filter((kw) => text.includes(kw)).join(", ")})`,
     };
   }
@@ -75,14 +76,14 @@ export function selectTier(
   const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
   if (isComplex || wordCount > 500) {
     return {
-      tier: "senior",
+      tier: "dev.senior",
       reason: `Complex task detected (${isComplex ? "keywords: " + COMPLEX_KEYWORDS.filter((kw) => text.includes(kw)).join(", ") : "long description"})`,
     };
   }
 
   // Default: medior for standard dev work
   return {
-    tier: "medior",
+    tier: "dev.medior",
     reason: "Standard dev task — multi-file changes, features, bug fixes",
   };
 }

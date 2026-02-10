@@ -4,7 +4,7 @@
  * Coordinates: agent creation → model config → workspace scaffolding.
  * Used by both the `setup` tool and the `openclaw devclaw setup` CLI command.
  */
-import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "../tiers.js";
+import { ALL_TIERS, allDefaultModels, type Tier } from "../tiers.js";
 import { migrateChannelBinding } from "../binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
 import { writePluginConfig } from "./config.js";
@@ -108,7 +108,7 @@ async function tryMigrateBinding(
 }
 
 function buildModelConfig(overrides?: Partial<Record<Tier, string>>): Record<Tier, string> {
-  const models = { ...DEFAULT_MODELS };
+  const models = allDefaultModels();
   if (overrides) {
     for (const [tier, model] of Object.entries(overrides)) {
       if (model && (ALL_TIERS as readonly string[]).includes(tier)) {

@@ -15,7 +15,7 @@ import {
   getSessionForTier,
   getWorker,
 } from "./projects.js";
-import { TIER_EMOJI, isTier, resolveTierToModel } from "./tiers.js";
+import { tierEmoji, resolveTierToModel } from "./tiers.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -129,7 +129,7 @@ export async function dispatchTask(
     transitionLabel, pluginConfig,
   } = opts;
 
-  const model = resolveTierToModel(tier, pluginConfig, role);
+  const model = resolveTierToModel(tier, pluginConfig);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForTier(worker, tier);
   const sessionAction = existingSessionKey ? "send" : "spawn";
@@ -276,7 +276,7 @@ function buildAnnouncement(
   tier: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
 ): string {
-  const emoji = isTier(tier) ? TIER_EMOJI[tier] : role === "qa" ? "🔍" : "🔧";
+  const emoji = tierEmoji(tier) ?? (role === "qa" ? "🔍" : "🔧");
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${tier}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }

@@ -43,15 +43,15 @@ export function createSetupTool(api: OpenClawPluginApi) {
               properties: {
                 junior: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.junior}`,
+                  description: `Default: ${DEFAULT_MODELS.dev.junior}`,
                 },
                 medior: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.medior}`,
+                  description: `Default: ${DEFAULT_MODELS.dev.medior}`,
                 },
                 senior: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.senior}`,
+                  description: `Default: ${DEFAULT_MODELS.dev.senior}`,
                 },
               },
             },
@@ -61,11 +61,11 @@ export function createSetupTool(api: OpenClawPluginApi) {
               properties: {
                 reviewer: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.reviewer}`,
+                  description: `Default: ${DEFAULT_MODELS.qa.reviewer}`,
                 },
                 tester: {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.tester}`,
+                  description: `Default: ${DEFAULT_MODELS.qa.tester}`,
                 },
               },
             },

@@ -21,18 +21,18 @@ export function registerCli(program: Command): void {
     .option("--new-agent <name>", "Create a new agent with this name")
     .option("--agent <id>", "Use an existing agent by ID")
     .option("--workspace <path>", "Direct workspace path")
-    .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.junior})`)
-    .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.medior})`)
-    .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.senior})`)
-    .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.reviewer})`)
-    .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.tester})`)
+    .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.dev.junior})`)
+    .option("--medior <model>", `Medior dev model (default: ${DEFAULT_MODELS.dev.medior})`)
+    .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.dev.senior})`)
+    .option("--reviewer <model>", `Reviewer model (default: ${DEFAULT_MODELS.qa.reviewer})`)
+    .option("--tester <model>", `Tester model (default: ${DEFAULT_MODELS.qa.tester})`)
     .action(async (opts) => {
       const models: Partial<Record<Tier, string>> = {};
-      if (opts.junior) models.junior = opts.junior;
-      if (opts.medior) models.medior = opts.medior;
-      if (opts.senior) models.senior = opts.senior;
-      if (opts.reviewer) models.reviewer = opts.reviewer;
-      if (opts.tester) models.tester = opts.tester;
+      if (opts.junior) models["dev.junior"] = opts.junior;
+      if (opts.medior) models["dev.medior"] = opts.medior;
+      if (opts.senior) models["dev.senior"] = opts.senior;
+      if (opts.reviewer) models["qa.reviewer"] = opts.reviewer;
+      if (opts.tester) models["qa.tester"] = opts.tester;
 
       const result = await runSetup({
         newAgentName: opts.newAgent,

@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { ALL_TIERS, DEFAULT_MODELS, type Tier } from "./tiers.js";
+import { ALL_TIERS, defaultModel } from "./tiers.js";
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -42,7 +42,7 @@ function buildModelTable(pluginConfig?: Record<string, unknown>): string {
     (pluginConfig as { models?: Record<string, string> })?.models ?? {};
   return ALL_TIERS.map(
     (t) =>
-      `  - **${t}**: ${models[t] || DEFAULT_MODELS[t as Tier]} (default: ${DEFAULT_MODELS[t as Tier]})`,
+      `  - **${t}**: ${models[t] || defaultModel(t)} (default: ${defaultModel(t)})`,
   ).join("\n");
 }
 
@@ -96,10 +96,11 @@ Show the default tier-to-model mapping and ask if they want to customize:
 
 | Tier | Default Model | Purpose |
 |------|---------------|---------|
-| junior | anthropic/claude-haiku-4-5 | Typos, single-file fixes |
-| medior | anthropic/claude-sonnet-4-5 | Features, bug fixes |
-| senior | anthropic/claude-opus-4-5 | Architecture, refactoring |
-| qa | anthropic/claude-sonnet-4-5 | Code review, testing |
+| dev.junior | anthropic/claude-haiku-4-5 | Typos, single-file fixes |
+| dev.medior | anthropic/claude-sonnet-4-5 | Features, bug fixes |
+| dev.senior | anthropic/claude-opus-4-5 | Architecture, refactoring |
+| qa.reviewer | anthropic/claude-sonnet-4-5 | Code review |
+| qa.tester | anthropic/claude-haiku-4-5 | Testing |
 
 If the defaults are fine, proceed. If customizing, ask which tiers to change.
 

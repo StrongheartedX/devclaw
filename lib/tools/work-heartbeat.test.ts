@@ -26,13 +26,13 @@ const INACTIVE_WORKER: WorkerState = {
 };
 
 const ACTIVE_DEV: WorkerState = {
-  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "medior",
-  sessions: { medior: "session-dev-42" },
+  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "dev.medior",
+  sessions: { "dev.medior": "session-dev-42" },
 };
 
 const ACTIVE_QA: WorkerState = {
-  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "qa",
-  sessions: { qa: "session-qa-42" },
+  active: true, issueId: "42", startTime: new Date().toISOString(), tier: "qa.reviewer",
+  sessions: { "qa.reviewer": "session-qa-42" },
 };
 
 function makeProject(overrides: Partial<Project> = {}): Project {
@@ -67,10 +67,10 @@ let tmpDir: string;
 
 async function setupWorkspace(projects: Record<string, Project>): Promise<string> {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "devclaw-test-"));
-  const memoryDir = path.join(tmpDir, "memory");
-  await fs.mkdir(memoryDir, { recursive: true });
+  const projectsDir = path.join(tmpDir, "projects");
+  await fs.mkdir(projectsDir, { recursive: true });
   await fs.writeFile(
-    path.join(memoryDir, "projects.json"),
+    path.join(projectsDir, "projects.json"),
     JSON.stringify({ projects }, null, 2) + "\n",
     "utf-8",
   );
@@ -284,13 +284,13 @@ describe("work_heartbeat: tier assignment", () => {
   afterEach(async () => { if (tmpDir) await fs.rm(tmpDir, { recursive: true }).catch(() => {}); });
 
   it("uses label-based tier when present", async () => {
-    // Given: issue with "senior" label → tier should be "senior"
+    // Given: issue with "dev.senior" label → tier should be "dev.senior"
     const workspaceDir = await setupWorkspace({
       "-100": makeProject({ name: "Alpha", repo: "https://github.com/test/alpha" }),
     });
 
     const provider = mockProvider({
-      "To Do": [{ iid: 10, title: "Refactor auth", description: "", labels: ["To Do", "senior"], web_url: "https://github.com/test/alpha/issues/10", state: "opened" }],
+      "To Do": [{ iid: 10, title: "Refactor auth", description: "", labels: ["To Do", "dev.senior"], web_url: "https://github.com/test/alpha/issues/10", state: "opened" }],
     });
 
     const result = await projectTick({
@@ -299,18 +299,18 @@ describe("work_heartbeat: tier assignment", () => {
 
     const pickup = result.pickups.find((p) => p.role === "dev");
     assert.ok(pickup);
-    assert.strictEqual(pickup.tier, "senior", "Should use label-based tier");
+    assert.strictEqual(pickup.tier, "dev.senior", "Should use label-based tier");
   });
 
-  it("overrides to qa tier for qa role regardless of label", async () => {
-    // Given: issue with "senior" label but picked up by QA
-    // Expected: tier = "qa" (QA always uses qa tier)
+  it("overrides to reviewer tier for qa role regardless of label", async () => {
+    // Given: issue with "dev.senior" label but picked up by QA
+    // Expected: tier = "qa.reviewer" (QA always uses reviewer tier)
     const workspaceDir = await setupWorkspace({
       "-100": makeProject({ name: "Alpha", repo: "https://github.com/test/alpha" }),
     });
 
     const provider = mockProvider({
-      "To Test": [{ iid: 10, title: "Review auth", description: "", labels: ["To Test", "senior"], web_url: "https://github.com/test/alpha/issues/10", state: "opened" }],
+      "To Test": [{ iid: 10, title: "Review auth", description: "", labels: ["To Test", "dev.senior"], web_url: "https://github.com/test/alpha/issues/10", state: "opened" }],
     });
 
     const result = await projectTick({
@@ -319,7 +319,7 @@ describe("work_heartbeat: tier assignment", () => {
 
     const qaPickup = result.pickups.find((p) => p.role === "qa");
     assert.ok(qaPickup);
-    assert.strictEqual(qaPickup.tier, "qa", "QA always uses qa tier regardless of issue label");
+    assert.strictEqual(qaPickup.tier, "qa.reviewer", "QA always uses reviewer tier regardless of issue label");
   });
 
   it("falls back to heuristic when no tier label", async () => {
@@ -339,7 +339,7 @@ describe("work_heartbeat: tier assignment", () => {
     const pickup = result.pickups.find((p) => p.role === "dev");
     assert.ok(pickup);
     // Heuristic should select junior for a typo fix
-    assert.strictEqual(pickup.tier, "junior", "Heuristic should assign junior for simple typo fix");
+    assert.strictEqual(pickup.tier, "dev.junior", "Heuristic should assign junior for simple typo fix");
   });
 });
 

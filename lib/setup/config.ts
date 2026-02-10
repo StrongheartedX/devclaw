@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DEV_TIERS, QA_TIERS, type Tier } from "../tiers.js";
+import { DEV_TIERS, QA_TIERS, tierName, type Tier } from "../tiers.js";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
 function openclawConfigPath(): string {
@@ -20,10 +20,10 @@ function buildRoleTierModels(models: Record<Tier, string>): { dev: Record<string
   const qa: Record<string, string> = {};
 
   for (const tier of DEV_TIERS) {
-    dev[tier] = models[tier];
+    dev[tierName(tier)] = models[tier];
   }
   for (const tier of QA_TIERS) {
-    qa[tier] = models[tier];
+    qa[tierName(tier)] = models[tier];
   }
 
   return { dev, qa };
