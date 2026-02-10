@@ -10,7 +10,7 @@ export async function log(
   event: string,
   data: Record<string, unknown>,
 ): Promise<void> {
-  const filePath = join(workspaceDir, "memory", "audit.log");
+  const filePath = join(workspaceDir, "log", "audit.log");
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
     event,

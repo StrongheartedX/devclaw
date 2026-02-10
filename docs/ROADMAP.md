@@ -35,7 +35,7 @@ The pipeline definition replaces the hardcoded `Doing → To Test → Testing �
 ### Open questions
 
 - How do custom labels map? Generate from role names, or let users define?
-- Should roles have their own instruction files (`roles/<project>/<role>.md`) — yes, this already works
+- Should roles have their own instruction files (`projects/prompts/<project>/<role>.md`) — yes, this already works
 - How to handle parallel roles (e.g. frontend + backend DEV in parallel before QA)?
 
 ---

@@ -53,8 +53,7 @@ export type DispatchResult = {
 
 /**
  * Build the task message sent to a worker session.
- * Reads role-specific instructions from workspace/roles/<project>/<role>.md
- * with fallback to workspace/roles/default/<role>.md.
+ * Reads role-specific instructions from workspace/projects/prompts/<project>/<role>.md.
  */
 export async function buildTaskMessage(opts: {
   workspaceDir: string;
@@ -196,10 +195,8 @@ export async function dispatchTask(
 async function loadRoleInstructions(
   workspaceDir: string, projectName: string, role: "dev" | "qa",
 ): Promise<string> {
-  const projectFile = path.join(workspaceDir, "roles", projectName, `${role}.md`);
-  const defaultFile = path.join(workspaceDir, "roles", "default", `${role}.md`);
-  try { return await fs.readFile(projectFile, "utf-8"); } catch { /* fallback */ }
-  try { return await fs.readFile(defaultFile, "utf-8"); } catch { /* none */ }
+  const projectFile = path.join(workspaceDir, "projects", "prompts", projectName, `${role}.md`);
+  try { return await fs.readFile(projectFile, "utf-8"); } catch { /* none */ }
   return "";
 }
 

@@ -164,7 +164,7 @@ The keyword heuristic in `model-selector.ts` serves as a **fallback only**, used
 
 ## State management
 
-All project state lives in a single `memory/projects.json` file in the orchestrator's workspace, keyed by Telegram group ID:
+All project state lives in a single `projects/projects.json` file in the orchestrator's workspace, keyed by Telegram group ID:
 
 ```json
 {
@@ -235,7 +235,7 @@ Pick up a task from the issue queue for a DEV or QA worker.
 2. Validates no active worker for this role
 3. Fetches issue from issue tracker, verifies correct label state
 4. Assigns tier (LLM-chosen via `model` param, keyword heuristic fallback)
-5. Loads role instructions from `roles/<project>/<role>.md` (fallback: `roles/default/<role>.md`)
+5. Loads prompt instructions from `projects/prompts/<project>/<role>.md`
 6. Looks up existing session for assigned tier (session-per-tier)
 7. Transitions label (e.g. `To Do` → `Doing`)
 8. Creates session via Gateway RPC if new (`sessions.patch`)
@@ -357,13 +357,13 @@ Register a new project with DevClaw. Creates all required issue tracker labels (
 2. Resolves repo path, auto-detects GitHub/GitLab, and verifies access
 3. Creates all 8 state labels (idempotent — safe to run on existing projects)
 4. Adds project entry to `projects.json` with empty worker state and `autoChain: false`
-5. Scaffolds role instruction files: `roles/<project>/dev.md` and `roles/<project>/qa.md` (copied from `roles/default/`)
+5. Scaffolds prompt instruction files: `projects/prompts/<project>/dev.md` and `projects/prompts/<project>/qa.md`
 6. Writes audit log entry
 7. Returns announcement text
 
 ## Audit logging
 
-Every tool call automatically appends an NDJSON entry to `memory/audit.log`. No manual logging required from the orchestrator agent.
+Every tool call automatically appends an NDJSON entry to `log/audit.log`. No manual logging required from the orchestrator agent.
 
 ```jsonl
 {"ts":"2026-02-08T10:30:00Z","event":"task_pickup","project":"my-webapp","issue":42,"role":"dev","tier":"medior","sessionAction":"send"}
@@ -438,25 +438,26 @@ Restrict tools to your orchestrator agent only:
 
 > DevClaw uses an `IssueProvider` interface to abstract issue tracker operations. GitLab (via `glab` CLI) and GitHub (via `gh` CLI) are supported — the provider is auto-detected from the git remote URL. Jira is planned.
 
-## Role instructions
+## Prompt instructions
 
 Workers receive role-specific instructions appended to their task message. `project_register` scaffolds editable files:
 
 ```
 workspace/
-├── roles/
-│   ├── default/          ← sensible defaults (created once)
-│   │   ├── dev.md
-│   │   └── qa.md
-│   ├── my-webapp/        ← per-project overrides (edit to customize)
-│   │   ├── dev.md
-│   │   └── qa.md
-│   └── another-project/
-│       ├── dev.md
-│       └── qa.md
+├── projects/
+│   ├── projects.json     ← project state
+│   └── prompts/
+│       ├── my-webapp/    ← per-project prompts (edit to customize)
+│       │   ├── dev.md
+│       │   └── qa.md
+│       └── another-project/
+│           ├── dev.md
+│           └── qa.md
+├── log/
+│   └── audit.log         ← NDJSON event log
 ```
 
-`task_pickup` loads `roles/<project>/<role>.md` with fallback to `roles/default/<role>.md`. Edit the per-project files to customize worker behavior — for example, adding project-specific deployment steps or test commands.
+`task_pickup` loads `projects/prompts/<project>/<role>.md`. Edit these files to customize worker behavior per project — for example, adding project-specific deployment steps or test commands.
 
 ## Requirements
 

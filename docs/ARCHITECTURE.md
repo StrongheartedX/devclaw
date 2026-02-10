@@ -473,11 +473,11 @@ Every piece of data and where it lives:
 │  task_create    → create issue in tracker                      │
 │  queue_status   → read labels + read state                     │
 │  session_health → check sessions + fix zombies                 │
-│  project_register → labels + roles + state init (one-time)     │
+│  project_register → labels + prompts + state init (one-time)   │
 └─────────────────────────────────────────────────────────────────┘
         ↕ atomic file I/O          ↕ OpenClaw CLI (plugin shells out)
 ┌────────────────────────────────┐ ┌──────────────────────────────┐
-│ memory/projects.json           │ │ OpenClaw Gateway + CLI       │
+│ projects/projects.json         │ │ OpenClaw Gateway + CLI       │
 │                                │ │ (called by plugin, not agent)│
 │  Per project:                  │ │                              │
 │    dev:                        │ │  openclaw gateway call       │
@@ -493,7 +493,7 @@ Every piece of data and where it lives:
 └────────────────────────────────┘ └──────────────────────────────┘
         ↕ append-only
 ┌─────────────────────────────────────────────────────────────────┐
-│ memory/audit.log (observability)                                │
+│ log/audit.log (observability)                                   │
 │                                                                 │
 │  NDJSON, one line per event:                                    │
 │  task_pickup, task_complete, model_selection,                   │
@@ -607,7 +607,7 @@ Provider selection is handled by `createProvider()` in `lib/providers/index.ts`.
 | Plugin source | `~/.openclaw/extensions/devclaw/` | Plugin code |
 | Plugin manifest | `~/.openclaw/extensions/devclaw/openclaw.plugin.json` | Plugin registration |
 | Agent config | `~/.openclaw/openclaw.json` | Agent definition + tool permissions + tier config |
-| Worker state | `~/.openclaw/workspace-<agent>/memory/projects.json` | Per-project DEV/QA state |
-| Audit log | `~/.openclaw/workspace-<agent>/memory/audit.log` | NDJSON event log |
+| Worker state | `~/.openclaw/workspace-<agent>/projects/projects.json` | Per-project DEV/QA state |
+| Audit log | `~/.openclaw/workspace-<agent>/log/audit.log` | NDJSON event log |
 | Session transcripts | `~/.openclaw/agents/<agent>/sessions/<uuid>.jsonl` | Conversation history per session |
 | Git repos | `~/git/<project>/` | Project source code |
