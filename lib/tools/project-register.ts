@@ -161,7 +161,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
       // Provide helpful note if project is already registered
       const contextInfo = context.projectName
         ? `Note: This group is already registered as "${context.projectName}". You may be re-registering it.`
-        : `Registering project for this ${context.channel === "whatsapp" ? "WhatsApp" : "Telegram"} group (ID: ${actualGroupId.substring(0, 20)}...).`;
+        : `Registering project for this ${context.channel} group (ID: ${actualGroupId.substring(0, 20)}...).`;
 
       // 1. Check project not already registered (allow re-register if incomplete)
       const data = await readProjects(workspaceDir);
@@ -205,6 +205,7 @@ export function createProjectRegisterTool(api: OpenClawPluginApi) {
         baseBranch,
         deployBranch,
         autoChain: false,
+        channel: context.channel,
         roleExecution,
         dev: emptyWorkerState([...DEV_TIERS]),
         qa: emptyWorkerState([...QA_TIERS]),

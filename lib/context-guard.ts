@@ -12,10 +12,10 @@ import path from "node:path";
 
 export type InteractionContext =
   | { type: "via-agent"; agentId: string; agentName?: string }
-  | { type: "direct"; channel?: "telegram" | "whatsapp" | "cli" }
+  | { type: "direct"; channel?: string; chatId?: string }
   | {
       type: "group";
-      channel: "telegram" | "whatsapp";
+      channel: string;
       groupId: string;
       projectName?: string;
     };
@@ -64,7 +64,7 @@ export async function detectContext(
 
       return {
         type: "group",
-        channel: messageChannel as "telegram" | "whatsapp",
+        channel: messageChannel,
         groupId: actualGroupId,
         projectName,
       };
@@ -72,11 +72,12 @@ export async function detectContext(
   }
 
   // --- Direct (DM or CLI) ---
+  // Extract chat ID from sessionKey (e.g. "agent:devclaw:telegram:direct:657120585")
+  const chatId = sessionKey ? sessionKey.split(":").pop() : undefined;
   return {
     type: "direct",
-    channel: messageChannel
-      ? (messageChannel as "telegram" | "whatsapp")
-      : "cli",
+    channel: messageChannel ?? "cli",
+    chatId,
   };
 }
 

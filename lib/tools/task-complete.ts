@@ -298,8 +298,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
           workspaceDir,
           config: notifyConfig,
           groupId,
-          // Channel detection: default to telegram if not available
-          channel: "telegram",
+          channel: project.channel ?? "telegram",
         },
       );
 

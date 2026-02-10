@@ -38,10 +38,6 @@ const plugin = {
         description: "Plugin-level project execution: parallel (each project independent) or sequential (only one project active at a time)",
         default: "parallel",
       },
-      orchestratorDm: {
-        type: "string",
-        description: "Telegram/WhatsApp chat ID for orchestrator DM notifications (heartbeat summaries)",
-      },
       notifications: {
         type: "object",
         description: "Notification settings for worker lifecycle events",

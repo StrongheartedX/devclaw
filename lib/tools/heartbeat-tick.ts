@@ -519,10 +519,11 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
         skipped: result.skipped.length,
       });
 
-      // Send heartbeat notification to orchestrator DM
+      // Send heartbeat notification back to whoever triggered it
+      // Both channel and target are derived from context (DM sessionKey)
       const notifyConfig = getNotificationConfig(pluginConfig);
-      const orchestratorDm = pluginConfig?.orchestratorDm as string | undefined;
-      
+      const orchestratorDm = context.type === "direct" ? context.chatId : undefined;
+
       await notify(
         {
           type: "heartbeat",
@@ -541,7 +542,7 @@ export function createHeartbeatTickTool(api: OpenClawPluginApi) {
           workspaceDir,
           config: notifyConfig,
           orchestratorDm,
-          channel: "telegram",
+          channel: "channel" in context ? context.channel : undefined,
         },
       );
 

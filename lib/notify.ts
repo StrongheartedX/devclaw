@@ -121,35 +121,31 @@ function buildMessage(event: NotifyEvent): string {
 }
 
 /**
- * Send a notification message to a Telegram/WhatsApp target.
+ * Send a notification message via the native OpenClaw messaging CLI.
  *
- * Uses the OpenClaw CLI to invoke the message tool.
+ * Uses `openclaw message send` which handles target resolution, chunking,
+ * retries, and error reporting for all supported channels.
  * Fails silently (logs error but doesn't throw) to avoid breaking the main flow.
  */
 async function sendMessage(
   target: string,
   message: string,
-  channel: "telegram" | "whatsapp",
+  channel: string,
   workspaceDir: string,
 ): Promise<boolean> {
   try {
-    // Use openclaw agent to send via message tool
-    // The message tool requires action=send, target, message
     await execFileAsync(
       "openclaw",
       [
-        "gateway",
-        "call",
-        "tools.invoke",
-        "--params",
-        JSON.stringify({
-          tool: "message",
-          params: {
-            action: "send",
-            target,
-            message,
-          },
-        }),
+        "message",
+        "send",
+        "--channel",
+        channel,
+        "--target",
+        target,
+        "--message",
+        message,
+        "--json",
       ],
       { timeout: 30_000 },
     );
@@ -178,8 +174,8 @@ export async function notify(
     config?: NotificationConfig;
     /** Target for project-scoped notifications (groupId) */
     groupId?: string;
-    /** Channel type for routing */
-    channel?: "telegram" | "whatsapp";
+    /** Channel type for routing (e.g. "telegram", "whatsapp", "discord", "slack") */
+    channel?: string;
     /** Target for DM notifications (orchestrator) */
     orchestratorDm?: string;
   },

@@ -7,7 +7,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-export type ChannelType = "telegram" | "whatsapp";
+export type ChannelType = string;
 
 export interface BindingAnalysis {
   channelEnabled: boolean;
