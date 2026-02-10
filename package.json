@@ -28,8 +28,7 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "watch": "tsc --noEmit --watch",
-    "test": "npx tsx --test test/**/*.test.ts"
+    "watch": "tsc --noEmit --watch"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"
