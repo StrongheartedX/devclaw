@@ -6,6 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { Tier } from "../tiers.js";
+import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
 function openclawConfigPath(): string {
   return path.join(process.env.HOME ?? "/home/lauren", ".openclaw", "openclaw.json");
@@ -35,6 +36,7 @@ export async function writePluginConfig(
     config.plugins.entries.devclaw.config.projectExecution = projectExecution;
   }
 
+  ensureHeartbeatDefaults(config);
   configureSubagentCleanup(config);
 
   if (agentId) {
@@ -84,5 +86,12 @@ function addToolRestrictions(config: Record<string, unknown>, agentId: string): 
     if (!agent.tools) agent.tools = {};
     agent.tools.deny = ["sessions_spawn", "sessions_send"];
     delete agent.tools.allow;
+  }
+}
+
+function ensureHeartbeatDefaults(config: Record<string, unknown>): void {
+  const devclaw = (config as any).plugins.entries.devclaw.config;
+  if (!devclaw.work_heartbeat) {
+    devclaw.work_heartbeat = { ...HEARTBEAT_DEFAULTS };
   }
 }

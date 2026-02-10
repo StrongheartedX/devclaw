@@ -22,12 +22,11 @@ export function createTaskCreateTool(api: OpenClawPluginApi) {
     label: "Task Create",
     description: `Create a new task (issue) in the project's issue tracker. Use this to file bugs, features, or tasks from chat.
 
-Examples:
-- Simple: { title: "Fix login bug" }
-- With body: { title: "Add dark mode", description: "## Why\nUsers want dark mode...\n\n## Acceptance Criteria\n- [ ] Toggle in settings" }
-- Ready for dev: { title: "Implement auth", description: "...", label: "To Do", pickup: true }
+**IMPORTANT:** Always creates in "Planning" unless the user explicitly asks to start work immediately. Never set label to "To Do" on your own — "Planning" issues require human review before entering the queue.
 
-The issue is created with a state label (defaults to "Planning"). Returns the created issue for immediate pickup.`,
+Examples:
+- Default: { title: "Fix login bug" } → created in Planning
+- User says "create and start working": { title: "Implement auth", description: "...", label: "To Do" }`,
     parameters: {
       type: "object",
       required: ["projectGroupId", "title"],
@@ -46,7 +45,7 @@ The issue is created with a state label (defaults to "Planning"). Returns the cr
         },
         label: {
           type: "string",
-          description: `State label for the issue. One of: ${STATE_LABELS.join(", ")}. Defaults to "Planning".`,
+          description: `State label. Defaults to "Planning" — only use "To Do" when the user explicitly asks to start work immediately.`,
           enum: STATE_LABELS,
         },
         assignees: {

@@ -5,11 +5,13 @@ import { createTaskCreateTool } from "./lib/tools/task-create.js";
 import { createTaskUpdateTool } from "./lib/tools/task-update.js";
 import { createTaskCommentTool } from "./lib/tools/task-comment.js";
 import { createStatusTool } from "./lib/tools/status.js";
-import { createAutoPickupTool } from "./lib/tools/auto-pickup.js";
+import { createHealthTool } from "./lib/tools/health.js";
+import { createWorkHeartbeatTool } from "./lib/tools/work-heartbeat.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
 import { registerCli } from "./lib/cli.js";
+import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 
 const plugin = {
   id: "devclaw",
@@ -44,6 +46,15 @@ const plugin = {
           workerComplete: { type: "boolean", default: true },
         },
       },
+      work_heartbeat: {
+        type: "object",
+        description: "Token-free interval-based heartbeat service. Runs health checks + queue dispatch automatically.",
+        properties: {
+          enabled: { type: "boolean", default: true, description: "Enable the heartbeat service." },
+          intervalSeconds: { type: "number", default: 60, description: "Seconds between ticks." },
+          maxPickupsPerTick: { type: "number", default: 4, description: "Max worker dispatches per tick." },
+        },
+      },
     },
   },
 
@@ -59,7 +70,8 @@ const plugin = {
 
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
-    api.registerTool(createAutoPickupTool(api), { names: ["auto_pickup"] });
+    api.registerTool(createHealthTool(api), { names: ["health"] });
+    api.registerTool(createWorkHeartbeatTool(api), { names: ["work_heartbeat"] });
 
     // Setup & config
     api.registerTool(createProjectRegisterTool(api), { names: ["project_register"] });
@@ -71,7 +83,10 @@ const plugin = {
       commands: ["devclaw"],
     });
 
-    api.logger.info("DevClaw plugin registered (10 tools, 1 CLI command)");
+    // Services
+    registerHeartbeatService(api);
+
+    api.logger.info("DevClaw plugin registered (11 tools, 1 service, 1 CLI command)");
   },
 };
 

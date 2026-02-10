@@ -2,7 +2,7 @@
  * tick.ts — Project-level queue scan + dispatch.
  *
  * Core function: projectTick() scans one project's queue and fills free worker slots.
- * Called by: work_start (fill parallel slot), work_finish (next pipeline step), auto_pickup (sweep).
+ * Called by: work_start (fill parallel slot), work_finish (next pipeline step), work_heartbeat (sweep).
  */
 import type { Issue, StateLabel } from "../providers/provider.js";
 import type { IssueProvider } from "../providers/provider.js";
@@ -90,7 +90,7 @@ export type TickResult = {
 /**
  * Scan one project's queue and fill free worker slots.
  *
- * Does NOT run health checks (that's auto_pickup's job).
+ * Does NOT run health checks (that's work_heartbeat's job).
  * Non-destructive: only dispatches if slots are free and issues are queued.
  */
 export async function projectTick(opts: {
@@ -103,13 +103,15 @@ export async function projectTick(opts: {
   maxPickups?: number;
   /** Only attempt this role. Used by work_start to fill the other slot. */
   targetRole?: "dev" | "qa";
+  /** Optional provider override (for testing). Uses createProvider if omitted. */
+  provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel">;
 }): Promise<TickResult> {
   const { workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun, maxPickups, targetRole } = opts;
 
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
-  const { provider } = createProvider({ repo: project.repo });
+  const provider = opts.provider ?? createProvider({ repo: project.repo }).provider;
   const roleExecution = project.roleExecution ?? "parallel";
   const roles: Array<"dev" | "qa"> = targetRole ? [targetRole] : ["dev", "qa"];
 
