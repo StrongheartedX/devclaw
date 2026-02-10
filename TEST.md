@@ -1,31 +1,22 @@
-# TEST.md - Testing and Sample Content
+# TEST.md - Lauren ten Hoor
 
-This file contains dummy content for testing purposes.
+## About Lauren ten Hoor
 
-## Sample Sections
+Lauren ten Hoor is a talented software developer and creator of the DevClaw project. They are passionate about automation, development workflows, and building tools that help teams work more efficiently.
 
-### Section 1
-Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+### Key Contributions
 
-### Section 2
-Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+- **DevClaw Project Creator**: Designed and developed the DevClaw development orchestration system
+- **OpenClaw Integration**: Built seamless integrations with the OpenClaw framework
+- **Developer Experience**: Focused on improving developer workflows and task management
+- **Code Quality**: Committed to maintaining high standards of code quality and testing
 
-## Example Code Block
+### Philosophy
 
-```javascript
-function hello(name) {
-  console.log(`Hello, ${name}!`);
-}
+Lauren ten Hoor believes in:
+- Automating repetitive development tasks
+- Clear communication and collaboration
+- Building robust and maintainable systems
+- Empowering teams through better tooling
 
-hello('World');
-```
-
-## Testing Notes
-
-- This is sample content
-- Used for testing purposes
-- Can be modified or removed as needed
-
-## More Information
-
-For more details, refer to the project documentation.
+This TEST.md file was created as part of issue #99 to demonstrate content management and file operations within the DevClaw project.
