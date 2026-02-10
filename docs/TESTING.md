@@ -59,10 +59,15 @@ npm run test:ui
       "devclaw": {
         "config": {
           "models": {
-            "junior": "anthropic/claude-haiku-4-5",
-            "medior": "anthropic/claude-sonnet-4-5",
-            "senior": "anthropic/claude-opus-4-5",
-            "qa": "anthropic/claude-sonnet-4-5"
+            "dev": {
+              "junior": "anthropic/claude-haiku-4-5",
+              "medior": "anthropic/claude-sonnet-4-5",
+              "senior": "anthropic/claude-opus-4-5"
+            },
+            "qa": {
+              "reviewer": "anthropic/claude-sonnet-4-5",
+              "tester": "anthropic/claude-haiku-4-5"
+            }
           }
         }
       }
