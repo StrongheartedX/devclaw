@@ -29,7 +29,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "watch": "tsc --noEmit --watch",
-    "test": "node --test lib/**/*.test.ts"
+    "test": "npx tsx --test test/**/*.test.ts"
   },
   "peerDependencies": {
     "openclaw": ">=2026.0.0"

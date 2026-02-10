@@ -33,7 +33,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "task_complete",
     label: "Task Complete",
-    description: `Complete a task: DEV done, QA pass, QA fail, or QA refine. Atomically handles: label transition, projects.json update, issue close/reopen, and audit logging. If the project has autoChain enabled, automatically dispatches the next step (DEV done → QA, QA fail → DEV fix).`,
+    description: `Complete a task: DEV done/blocked, QA pass/fail/refine/blocked. Atomically handles: label transition, projects.json update, issue close/reopen, and audit logging. If the project has autoChain enabled, automatically dispatches the next step (DEV done → QA, QA fail → DEV fix). Use "blocked" when the worker cannot complete the task (errors, missing info, etc.).`,
     parameters: {
       type: "object",
       required: ["role", "result", "projectGroupId"],
@@ -45,9 +45,9 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         },
         result: {
           type: "string",
-          enum: ["done", "pass", "fail", "refine"],
+          enum: ["done", "pass", "fail", "refine", "blocked"],
           description:
-            'Completion result: "done" (DEV finished), "pass" (QA approved), "fail" (QA found issues), "refine" (needs human input)',
+            'Completion result: "done" (DEV finished), "pass" (QA approved), "fail" (QA found issues), "refine" (needs human input), "blocked" (cannot complete, needs escalation)',
         },
         projectGroupId: {
           type: "string",
@@ -62,7 +62,7 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const role = params.role as "dev" | "qa";
-      const result = params.result as "done" | "pass" | "fail" | "refine";
+      const result = params.result as "done" | "pass" | "fail" | "refine" | "blocked";
       const groupId = params.projectGroupId as string;
       const summary = params.summary as string | undefined;
       const workspaceDir = ctx.workspaceDir;
@@ -72,14 +72,14 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       }
 
       // Validate result matches role
-      if (role === "dev" && result !== "done") {
+      if (role === "dev" && result !== "done" && result !== "blocked") {
         throw new Error(
-          `DEV can only complete with result "done", got "${result}"`,
+          `DEV can only complete with "done" or "blocked", got "${result}"`,
         );
       }
       if (role === "qa" && result === "done") {
         throw new Error(
-          `QA cannot use result "done". Use "pass", "fail", or "refine".`,
+          `QA cannot use result "done". Use "pass", "fail", "refine", or "blocked".`,
         );
       }
 
@@ -267,6 +267,24 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
         output.announcement = `🤔 QA REFINE #${issueId}${summary ? ` — ${summary}` : ""}. Awaiting human decision.`;
       }
 
+      // === DEV BLOCKED ===
+      if (role === "dev" && result === "blocked") {
+        await deactivateWorker(workspaceDir, groupId, "dev");
+        await provider.transitionLabel(issueId, "Doing", "To Do");
+
+        output.labelTransition = "Doing → To Do";
+        output.announcement = `🚫 DEV BLOCKED #${issueId}${summary ? ` — ${summary}` : ""}. Returned to queue.`;
+      }
+
+      // === QA BLOCKED ===
+      if (role === "qa" && result === "blocked") {
+        await deactivateWorker(workspaceDir, groupId, "qa");
+        await provider.transitionLabel(issueId, "Testing", "To Test");
+
+        output.labelTransition = "Testing → To Test";
+        output.announcement = `🚫 QA BLOCKED #${issueId}${summary ? ` — ${summary}` : ""}. Returned to QA queue.`;
+      }
+
       // Send notification to project group
       const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
       const notifyConfig = getNotificationConfig(pluginConfig);
@@ -275,12 +293,16 @@ export function createTaskCompleteTool(api: OpenClawPluginApi) {
       let nextState: string | undefined;
       if (role === "dev" && result === "done") {
         nextState = "QA queue";
+      } else if (role === "dev" && result === "blocked") {
+        nextState = "returned to queue";
       } else if (role === "qa" && result === "pass") {
         nextState = "Done!";
       } else if (role === "qa" && result === "fail") {
         nextState = "back to DEV";
       } else if (role === "qa" && result === "refine") {
         nextState = "awaiting human decision";
+      } else if (role === "qa" && result === "blocked") {
+        nextState = "returned to QA queue";
       }
 
       await notify(

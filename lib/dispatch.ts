@@ -55,7 +55,7 @@ export type DispatchResult = {
  * Reads role-specific instructions from workspace/roles/<project>/<role>.md
  * with fallback to workspace/roles/default/<role>.md.
  */
-async function buildTaskMessage(opts: {
+export async function buildTaskMessage(opts: {
   workspaceDir: string;
   projectName: string;
   role: "dev" | "qa";
@@ -104,6 +104,12 @@ async function buildTaskMessage(opts: {
     }
   }
 
+  // Build available results based on role
+  const availableResults =
+    role === "dev"
+      ? '"done" (completed successfully) or "blocked" (cannot complete, need help)'
+      : '"pass" (approved), "fail" (issues found), "refine" (needs human input), or "blocked" (cannot complete)';
+
   const parts = [
     `${role.toUpperCase()} task for project "${projectName}" — Issue #${issueId}`,
     ``,
@@ -117,6 +123,24 @@ async function buildTaskMessage(opts: {
   if (roleInstructions) {
     parts.push(``, `---`, ``, roleInstructions.trim());
   }
+
+  // Mandatory completion contract
+  parts.push(
+    ``,
+    `---`,
+    ``,
+    `## MANDATORY: Task Completion`,
+    ``,
+    `When you finish this task, you MUST call \`task_complete\` with:`,
+    `- \`role\`: "${role}"`,
+    `- \`projectGroupId\`: "${groupId}"`,
+    `- \`result\`: ${availableResults}`,
+    `- \`summary\`: brief description of what you did`,
+    ``,
+    `⚠️ You MUST call task_complete even if you encounter errors or cannot finish.`,
+    `Use "blocked" with a summary explaining why you're stuck.`,
+    `Never end your session without calling task_complete.`,
+  );
 
   return parts.join("\n");
 }
@@ -193,8 +217,18 @@ export async function dispatchTask(
 
     await execFileAsync(
       "openclaw",
-      ["agent", "--session-id", sessionKey!, "--message", taskMessage],
-      { timeout: 60_000 },
+      [
+        "gateway",
+        "call",
+        "agent",
+        "--params",
+        JSON.stringify({
+          idempotencyKey: randomUUID(),
+          sessionId: sessionKey!,
+          message: taskMessage,
+        }),
+      ],
+      { timeout: 30_000 },
     );
 
     dispatched = true;

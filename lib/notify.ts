@@ -42,7 +42,7 @@ export type NotifyEvent =
       groupId: string;
       issueId: number;
       role: "dev" | "qa";
-      result: "done" | "pass" | "fail" | "refine";
+      result: "done" | "pass" | "fail" | "refine" | "blocked";
       summary?: string;
       nextState?: string;
     }
@@ -76,6 +76,7 @@ function buildMessage(event: NotifyEvent): string {
         pass: "🎉",
         fail: "❌",
         refine: "🤔",
+        blocked: "🚫",
       };
       const icon = icons[event.result] ?? "📋";
       const resultText: Record<string, string> = {
@@ -83,6 +84,7 @@ function buildMessage(event: NotifyEvent): string {
         pass: "PASSED",
         fail: "FAILED",
         refine: "needs refinement",
+        blocked: "BLOCKED",
       };
       const text = resultText[event.result] ?? event.result;
       let msg = `${icon} ${event.role.toUpperCase()} ${text} #${event.issueId}`;

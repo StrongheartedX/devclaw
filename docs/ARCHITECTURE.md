@@ -403,6 +403,25 @@ Label: "Testing" → "Refining"
 
 Issue needs human decision. Pipeline pauses until human moves it to "To Do" or closes it.
 
+#### 7d. Blocked (DEV or QA)
+
+```
+DEV Blocked: "Doing" → "To Do"
+QA Blocked:  "Testing" → "To Test"
+```
+
+Worker cannot complete (missing info, environment errors, etc.). Issue returns to queue for retry. No auto-chain — the task is available for the next heartbeat pickup.
+
+### Completion enforcement
+
+Three layers guarantee that `task_complete` always runs:
+
+1. **Completion contract** — Every task message sent to a worker session includes a mandatory `## MANDATORY: Task Completion` section listing available results and requiring `task_complete` even on failure. Workers are instructed to use `"blocked"` if stuck.
+
+2. **Blocked result** — Both DEV and QA can use `"blocked"` to gracefully return a task to queue without losing work. DEV blocked: `Doing → To Do`. QA blocked: `Testing → To Test`. This gives workers an escape hatch instead of silently dying.
+
+3. **Stale worker watchdog** — The heartbeat's health check detects workers active for >2 hours. With `autoFix=true`, it deactivates the worker and reverts the label back to queue. This catches sessions that crashed, ran out of context, or otherwise failed without calling `task_complete`. The `session_health` tool provides the same check for manual invocation.
+
 ### Phase 8: Heartbeat (continuous)
 
 The heartbeat runs periodically (triggered by the agent or a scheduled message). It combines health check + queue scan:
@@ -493,6 +512,8 @@ Every piece of data and where it lives:
 │    "✅ DEV done #42 — Login page with OAuth. Moved to QA queue."│
 │    "🎉 QA PASS #42. Issue closed."                              │
 │    "❌ QA FAIL #42 — OAuth redirect broken. Sent back to DEV."  │
+│    "🚫 DEV BLOCKED #42 — Missing dependencies. Returned to queue."│
+│    "🚫 QA BLOCKED #42 — Env not available. Returned to QA queue."│
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -575,7 +596,8 @@ Provider selection is handled by `createProvider()` in `lib/providers/index.ts`.
 | projects.json corrupted | Tool can't parse JSON | Manual fix needed. Atomic writes (temp+rename) prevent partial writes. |
 | Label out of sync | `task_pickup` verifies label before transitioning | Throws error if label doesn't match expected state. Agent reports mismatch. |
 | Worker already active | `task_pickup` checks `active` flag | Throws error: "DEV worker already active on project". Must complete current task first. |
-| Stale worker (>2h) | `session_health` flags as warning | Agent can investigate or `autoFix` can clear. |
+| Stale worker (>2h) | `session_health` and heartbeat health check | `autoFix`: deactivates worker, reverts label to queue (To Do / To Test). Task available for next pickup. |
+| Worker stuck/blocked | Worker calls `task_complete` with `"blocked"` | Deactivates worker, reverts label to queue. Issue available for retry. |
 | `project_register` fails | Plugin catches error during label creation or state write | Clean error returned. No partial state — labels are idempotent, projects.json not written until all labels succeed. |
 
 ## File locations

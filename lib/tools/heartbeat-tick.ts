@@ -214,6 +214,41 @@ async function checkAndFixWorkerHealth(
     });
   }
 
+  // Check 4: Active for >2 hours (stale watchdog)
+  // A stale worker likely crashed or ran out of context without calling task_complete.
+  // Auto-fix reverts the label back to queue so the issue can be picked up again.
+  if (worker.active && worker.startTime && currentSessionKey) {
+    const startMs = new Date(worker.startTime).getTime();
+    const nowMs = Date.now();
+    const hoursActive = (nowMs - startMs) / (1000 * 60 * 60);
+
+    if (hoursActive > 2) {
+      if (autoFix) {
+        const revertLabel: StateLabel = role === "dev" ? "To Do" : "To Test";
+        const currentLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
+        try {
+          if (worker.issueId) {
+            const primaryIssueId = Number(worker.issueId.split(",")[0]);
+            await provider.transitionLabel(primaryIssueId, currentLabel, revertLabel);
+          }
+        } catch {
+          // Best-effort label revert
+        }
+
+        await updateWorker(workspaceDir, groupId, role, {
+          active: false,
+          issueId: null,
+        });
+      }
+      fixes.push({
+        project: project.name,
+        role,
+        type: "stale_worker",
+        fixed: autoFix,
+      });
+    }
+  }
+
   return fixes;
 }
 

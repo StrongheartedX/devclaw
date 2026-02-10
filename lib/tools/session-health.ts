@@ -129,14 +129,15 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
             issues.push(issue);
           }
 
-          // Check 3: Active for >2 hours (stale)
+          // Check 3: Active for >2 hours (stale watchdog)
+          // Worker likely crashed or ran out of context without calling task_complete.
           if (worker.active && worker.startTime) {
             const startMs = new Date(worker.startTime).getTime();
             const nowMs = Date.now();
             const hoursActive = (nowMs - startMs) / (1000 * 60 * 60);
 
             if (hoursActive > 2) {
-              issues.push({
+              const issue: Record<string, unknown> = {
                 type: "stale_worker",
                 severity: "warning",
                 project: project.name,
@@ -146,7 +147,30 @@ export function createSessionHealthTool(api: OpenClawPluginApi) {
                 sessionKey: currentSessionKey,
                 issueId: worker.issueId,
                 message: `${role.toUpperCase()} has been active for ${Math.round(hoursActive * 10) / 10}h — may need attention`,
-              });
+              };
+
+              if (autoFix) {
+                // Revert issue label back to queue
+                const revertLabel: StateLabel = role === "dev" ? "To Do" : "To Test";
+                const currentLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
+                try {
+                  if (worker.issueId) {
+                    const primaryIssueId = Number(worker.issueId.split(",")[0]);
+                    await provider.transitionLabel(primaryIssueId, currentLabel, revertLabel);
+                    issue.labelReverted = `${currentLabel} → ${revertLabel}`;
+                  }
+                } catch {
+                  issue.labelRevertFailed = true;
+                }
+
+                await updateWorker(workspaceDir, groupId, role, {
+                  active: false,
+                  issueId: null,
+                });
+                issue.fixed = true;
+                fixesApplied++;
+              }
+              issues.push(issue);
             }
           }
 

@@ -13,7 +13,7 @@ import {
   deactivateWorker,
   readProjects,
   writeProjects,
-} from "./projects.js";
+} from "../lib/projects.js";
 
 describe("Session persistence", () => {
   let tempDir: string;

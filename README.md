@@ -89,10 +89,10 @@ stateDiagram-v2
     [*] --> Planning
     Planning --> ToDo: Ready for development
 
-    ToDo --> Doing: task_pickup (DEV)
+    ToDo --> Doing: task_pickup (DEV) ⇄ blocked
     Doing --> ToTest: task_complete (DEV done)
 
-    ToTest --> Testing: task_pickup (QA) or auto-chain
+    ToTest --> Testing: task_pickup (QA) / auto-chain ⇄ blocked
     Testing --> Done: task_complete (QA pass)
     Testing --> ToImprove: task_complete (QA fail)
     Testing --> Refining: task_complete (QA refine)
@@ -107,13 +107,22 @@ stateDiagram-v2
 
 Workers (DEV/QA sub-agent sessions) call `task_complete` directly when they finish — no orchestrator involvement needed for the state transition. Workers can also call `task_create` to file follow-up issues they discover during work.
 
+### Completion enforcement
+
+Three layers guarantee that `task_complete` always runs, preventing tasks from getting stuck in "Doing" or "Testing" forever:
+
+1. **Completion contract** — Every task message includes a mandatory section requiring the worker to call `task_complete`, even on failure. Workers use `"blocked"` if stuck.
+2. **Blocked result** — Both DEV and QA can return `"blocked"` to gracefully put a task back in queue (`Doing → To Do`, `Testing → To Test`) instead of silently dying.
+3. **Stale worker watchdog** — The heartbeat health check detects workers active >2 hours and auto-reverts labels to queue, catching sessions that crashed or ran out of context.
+
 ### Auto-chaining
 
 When a project has `autoChain: true`, `task_complete` automatically dispatches the next step:
 
 - **DEV "done"** → QA is dispatched immediately (using the qa tier)
 - **QA "fail"** → DEV fix is dispatched immediately (reuses previous DEV tier)
-- **QA "pass" / "refine"** → no chaining (pipeline done or needs human input)
+- **QA "pass" / "refine" / "blocked"** → no chaining (pipeline done, needs human input, or returned to queue)
+- **DEV "blocked"** → no chaining (returned to queue for retry)
 
 When `autoChain` is false, `task_complete` returns a `nextAction` hint for the orchestrator to act on.
 
@@ -237,21 +246,23 @@ Pick up a task from the issue queue for a DEV or QA worker.
 
 ### `task_complete`
 
-Complete a task with one of four results. Called by workers (DEV/QA sub-agent sessions) directly, or by the orchestrator.
+Complete a task with a result. Called by workers (DEV/QA sub-agent sessions) directly, or by the orchestrator.
 
 **Parameters:**
 
 - `role` ("dev" | "qa", required)
-- `result` ("done" | "pass" | "fail" | "refine", required)
+- `result` ("done" | "pass" | "fail" | "refine" | "blocked", required)
 - `projectGroupId` (string, required)
 - `summary` (string, optional) — For the Telegram announcement
 
 **Results:**
 
 - **DEV "done"** — Pulls latest code, moves label `Doing` → `To Test`, deactivates worker. If `autoChain` enabled, automatically dispatches QA.
+- **DEV "blocked"** — Moves label `Doing` → `To Do`, deactivates worker. Task returns to queue for retry.
 - **QA "pass"** — Moves label `Testing` → `Done`, closes issue, deactivates worker
 - **QA "fail"** — Moves label `Testing` → `To Improve`, reopens issue. If `autoChain` enabled, automatically dispatches DEV fix (reuses previous DEV tier).
 - **QA "refine"** — Moves label `Testing` → `Refining`, awaits human decision
+- **QA "blocked"** — Moves label `Testing` → `To Test`, deactivates worker. Task returns to QA queue for retry.
 
 ### `task_update`
 
@@ -321,10 +332,10 @@ Detects and optionally fixes state inconsistencies.
 
 **Checks:**
 
-- Active worker with no session key (critical)
-- Active worker whose session is dead — zombie (critical)
-- Worker active for >2 hours (warning)
-- Inactive worker with lingering issue ID (warning)
+- Active worker with no session key (critical, auto-fixable)
+- Active worker whose session is dead — zombie (critical, auto-fixable)
+- Worker active for >2 hours — stale watchdog (warning, auto-fixable: reverts label to queue)
+- Inactive worker with lingering issue ID (warning, auto-fixable)
 
 ### `project_register`
 
