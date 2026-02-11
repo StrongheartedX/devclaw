@@ -26,7 +26,8 @@ Agent:  "✅ DEV DONE #43 — Updated to brand blue. Moved to QA."
 Agent:  "❌ QA FAIL #43 — Color doesn't match dark mode. Back to DEV."
 Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
 
-You:    "Create an issue for refactoring the profile page, pick it up."
+  You:  "Create an issue for refactoring the profile page, pick it up."
+
 Agent:  created #44 "Refactor user profile page" on GitHub — To Do
 Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
 
