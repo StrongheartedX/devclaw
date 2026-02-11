@@ -4,273 +4,401 @@
 
 # DevClaw — Development Plugin for OpenClaw
 
-**Every group chat becomes an autonomous development team.**
+**Turn any group chat into a dev team that ships.**
 
-Add an agent to a Telegram/WhatsApp group, point it at a GitHub/GitLab repo — that group now has an **orchestrator** managing the backlog, a **DEV** worker writing code, and a **QA** worker reviewing it. All autonomous. Add another group, get another team. Each project runs in complete isolation with its own task queue, workers, and session state.
+DevClaw is a plugin for [OpenClaw](https://openclaw.ai) that turns your orchestrator agent into a development manager. It hires developers, assigns tasks, reviews code, and keeps the pipeline moving — across as many projects as you have group chats. [Get started &rarr;](#getting-started)
 
-DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
+---
+
+## What it looks like
+
+You have two projects in two Telegram groups. You go to bed. You wake up:
+
+```
+── Group: "Dev - My Webapp" ──────────────────────────────
+
+Agent:  "⚡ Sending DEV (medior) for #42: Add login page"
+Agent:  "✅ DEV DONE #42 — Login page with OAuth. Moved to QA."
+Agent:  "🔍 Sending QA (reviewer) for #42: Add login page"
+Agent:  "🎉 QA PASS #42. Issue closed."
+Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
+Agent:  "✅ DEV DONE #43 — Updated to brand blue. Moved to QA."
+Agent:  "❌ QA FAIL #43 — Color doesn't match dark mode. Back to DEV."
+Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
+
+  You:  "Create an issue for refactoring the profile page, pick it up."
+
+Agent:  created #44 "Refactor user profile page" on GitHub — To Do
+Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
+
+Agent:  "✅ DEV DONE #43 — Fixed dark-mode color. Back to QA."
+Agent:  "🎉 QA PASS #43. Issue closed."
+
+── Group: "Dev - My API" ─────────────────────────────────
+
+Agent:  "🧠 Spawning DEV (senior) for #18: Migrate auth to OAuth2"
+Agent:  "✅ DEV DONE #18 — OAuth2 provider with refresh tokens. Moved to QA."
+Agent:  "🎉 QA PASS #18. Issue closed."
+Agent:  "⚡ Sending DEV (medior) for #19: Add rate limiting to /api/search"
+```
+
+Multiple issues shipped, a QA failure automatically retried, and a second project's migration completed — all while you slept. When you dropped in mid-stream to create an issue, the scheduler kept going before, during, and after.
+
+---
 
 ## Why DevClaw
 
-OpenClaw gives you a powerful multi-agent runtime — channel bindings, session management, tool permissions, gateway RPC. But it's a general-purpose platform. It doesn't know what "pick up an issue" means, how to transition a label, when to reuse a session, or how to schedule QA after DEV completes. Managing a development workflow on raw OpenClaw means the orchestrator agent handles all of that through fragile, token-expensive LLM reasoning — and it gets it wrong often enough to need constant supervision. DevClaw encodes the entire development lifecycle into deterministic plugin code: level assignment, label transitions, session dispatch, scheduling, health checks, and audit logging. The agent calls one tool. The plugin does the rest. That's the difference between "an agent that can write code" and "a team that ships autonomously."
+### Autonomous multi-project development
 
-## Benefits
+Each project is fully isolated — own queue, workers, sessions, and state. DEV and QA execute in parallel within each project, and multiple projects run simultaneously. A token-free scheduling engine drives it all autonomously:
 
-### Process consistency
+- **[Scheduling engine](#automatic-scheduling)** — `work_heartbeat` continuously scans queues, dispatches workers, and drives DEV → QA → DEV [feedback loops](#how-tasks-flow-between-roles)
+- **[Project isolation](#execution-modes)** — parallel workers per project, parallel projects across the system
+- **[Role instructions](#custom-instructions-per-project)** — per-project, per-role prompts injected at dispatch time
 
-Every task follows the same fixed pipeline — `Planning → To Do → Doing → To Test → Testing → Done` — across every project. Label transitions, state updates, session dispatch, and audit logging happen atomically inside the plugin. The orchestrator agent **cannot** skip a step, forget a label, or corrupt session state. Hundreds of lines of manual orchestration logic collapse into a single `work_start` call.
+### Process enforcement
 
-### Token savings
+GitHub/GitLab issues are the single source of truth — not an internal database. Every tool call wraps the full operation into deterministic code with rollback on failure:
 
-DevClaw reduces token consumption at three levels:
+- **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
+- **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
+- **[Tool-based guardrails](#the-toolbox)** — 11 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
-| Mechanism | How it works | Estimated savings |
+### ~60-80% token savings
+
+Three mechanisms compound to cut token usage dramatically versus running one large model with fresh context each time:
+
+- **[Tier selection](#meet-your-team)** — Haiku for typos, Sonnet for features, Opus for architecture (~30-50% on simple tasks)
+- **[Session reuse](#sessions-accumulate-context)** — workers accumulate codebase knowledge across tasks (~40-60% per task)
+- **[Token-free scheduling](#automatic-scheduling)** — `work_heartbeat` runs on pure CLI calls, zero LLM tokens for orchestration
+
+---
+
+## The problem DevClaw solves
+
+OpenClaw is a great multi-agent runtime. It handles sessions, tools, channels, gateway RPC — everything you need to run AI agents. But it's a general-purpose platform. It has no opinion about how software gets built.
+
+Without DevClaw, your orchestrator agent has to figure out on its own how to:
+- Pick the right model for the task complexity
+- Create or reuse the right worker session
+- Transition issue labels in the right order
+- Track which worker is doing what across projects
+- Schedule QA after DEV completes, and re-schedule DEV after QA fails
+- Detect crashed workers and recover
+- Log everything for auditability
+
+That's a lot of reasoning per task. LLMs do it imperfectly — they forget steps, corrupt state, pick the wrong model, lose session references. You end up babysitting the thing you built to avoid babysitting.
+
+DevClaw moves all of that into deterministic plugin code. The agent says "pick up issue #42." The plugin handles the other 10 steps atomically. Every time, the same way, zero reasoning tokens spent on orchestration.
+
+---
+
+## Meet your team
+
+DevClaw doesn't think in model IDs. It thinks in people.
+
+When a task comes in, you don't configure `anthropic/claude-sonnet-4-5` — you assign a **medior developer**. The orchestrator evaluates task complexity and picks the right person for the job:
+
+### Developers
+
+| Level | Assigns to | Model |
 |---|---|---|
-| **Session re-use (context preservation)** | Each developer level per role maintains one persistent session per project. When a medior dev finishes task A and picks up task B, the accumulated codebase context carries over — no re-reading the repo. | **~40-60%** per task (~50K context tokens saved per reuse) |
-| **Tier selection** | Junior for typos (Haiku), medior for features (Sonnet), senior for architecture (Opus). The right model for the job means you're not burning Opus tokens on a CSS fix. | **~30-50%** on simple tasks vs. always using the largest model |
-| **Token-free heartbeat** | The heartbeat service runs every 60s doing health checks and queue dispatch using pure deterministic code + CLI calls. Zero LLM tokens consumed. Workers only use tokens when they actually process tasks. | **100%** savings on orchestration overhead |
+| **Junior** | Typos, CSS fixes, renames, single-file changes | Haiku |
+| **Medior** | Features, bug fixes, multi-file changes | Sonnet |
+| **Senior** | Architecture, migrations, system-wide refactoring | Opus |
 
-### Project isolation and parallelization
+### QA
 
-Each project is fully isolated — separate task queue, separate worker state, separate sessions. No cross-project contamination. Two execution modes control parallelism:
+| Level | Assigns to | Model |
+|---|---|---|
+| **Reviewer** | Code review, test validation, PR inspection | Sonnet |
+| **Tester** | Manual testing, smoke tests | Haiku |
 
-- **Project-level**: DEV and QA can work simultaneously on different tasks (parallel, default) or one role at a time (sequential)
-- **Plugin-level**: Multiple projects can have active workers at once (parallel, default) or only one project active at a time (sequential)
+A CSS typo gets the intern. A database migration gets the architect. You're not burning Opus tokens on a color change, and you're not sending Haiku to redesign your auth system.
 
-### External task state (pluggable issue trackers)
-
-Task state lives in your issue tracker — not in DevClaw's internal storage. Every label transition, issue creation, and status query goes through the `IssueProvider` interface, which abstracts the underlying tracker. GitHub Issues and GitLab Issues are supported today (auto-detected from your git remote); the pluggable architecture means any task manager — Jira, Linear, or a custom system — can be added by implementing the same interface. This gives you full visibility in your existing tools: filter by DevClaw labels in GitHub, build dashboards in GitLab, set up webhooks on label changes. The issue tracker is the source of truth; DevClaw reads from it and writes to it, but never replaces it.
-
-### Continuous planning
-
-The heartbeat service runs a continuous loop: health check → queue scan → dispatch. It detects stale workers (>2 hours), auto-reverts stuck labels, and fills free worker slots — all without human intervention or agent LLM tokens. The orchestrator agent only gets involved when a decision requires judgment.
-
-### Feedback loops
-
-Two automated feedback loops keep the pipeline self-correcting:
-
-1. **Stale worker watchdog** — Workers active >2 hours are auto-detected. Labels revert to queue, workers deactivated. Tasks available for retry.
-2. **Completion enforcement** — Every task message includes a mandatory `work_finish` section. Workers use `"blocked"` if stuck. Three-layer guarantee prevents tasks from getting stuck forever.
-
-### Role-based instruction prompts
-
-Workers receive customizable, project-specific instructions loaded at dispatch time:
-
-```
-workspace/projects/roles/
-├── my-webapp/
-│   ├── dev.md     ← "Run npm test before committing. Deploy URL: ..."
-│   └── qa.md      ← "Check OAuth flow. Verify mobile responsiveness."
-└── default/
-    ├── dev.md     ← Fallback for projects without custom instructions
-    └── qa.md
-```
-
-Edit these files to inject deployment steps, test commands, acceptance criteria, or coding standards — per project, per role.
-
-### Atomic operations with rollback
-
-Every tool call wraps multiple operations (label transition + state update + session dispatch + audit log) into a single atomic action. If session dispatch fails, the label transition is rolled back. No orphaned state. No half-completed operations.
-
-### Full audit trail
-
-Every tool call automatically appends an NDJSON entry to `log/audit.log`. Query with `jq` to trace any task's full history. No manual logging required from the orchestrator.
+Every mapping is [configurable](docs/CONFIGURATION.md#model-tiers) — swap in any model you want per level.
 
 ---
 
-## The model-to-role mapping
+## How a task moves through the pipeline
 
-DevClaw doesn't expose raw model names. You're assigning a _junior developer_ to fix a typo, not configuring `anthropic/claude-haiku-4-5`. Each developer level maps to a configurable LLM:
+Every issue follows the same path, no exceptions. DevClaw enforces it:
 
-### DEV levels
-
-| Level | Who they are | Default model | Assigns to |
-|---|---|---|---|
-| `junior` | The intern | `anthropic/claude-haiku-4-5` | Typos, single-file fixes, CSS changes |
-| `medior` | The reliable mid-level | `anthropic/claude-sonnet-4-5` | Features, bug fixes, multi-file changes |
-| `senior` | The architect | `anthropic/claude-opus-4-5` | Architecture, migrations, system-wide refactoring |
-
-### QA levels
-
-| Level | Who they are | Default model | Assigns to |
-|---|---|---|---|
-| `reviewer` | The code reviewer | `anthropic/claude-sonnet-4-5` | Code review, test validation, PR inspection |
-| `tester` | The QA tester | `anthropic/claude-haiku-4-5` | Manual testing, smoke tests |
-
-The orchestrator LLM evaluates each issue and picks the appropriate level. A keyword-based heuristic in `model-selector.ts` serves as fallback when the orchestrator omits the level. Override which model powers each level in [`openclaw.json`](docs/CONFIGURATION.md#model-tiers).
-
----
-
-## Task workflow
-
-Every task (issue) moves through a fixed pipeline of label states. DevClaw tools handle every transition atomically.
+```
+Planning → To Do → Doing → To Test → Testing → Done
+```
 
 ```mermaid
 stateDiagram-v2
     [*] --> Planning
     Planning --> ToDo: Ready for development
 
-    ToDo --> Doing: work_start (DEV) ⇄ blocked
-    Doing --> ToTest: work_finish (DEV done)
+    ToDo --> Doing: DEV picks up
+    Doing --> ToTest: DEV done
 
-    ToTest --> Testing: work_start (QA) ⇄ blocked
-    Testing --> Done: work_finish (QA pass)
-    Testing --> ToImprove: work_finish (QA fail)
-    Testing --> Refining: work_finish (QA refine)
+    ToTest --> Testing: Scheduler picks up QA
+    Testing --> Done: QA pass (issue closed)
+    Testing --> ToImprove: QA fail (back to DEV)
+    Testing --> Refining: QA needs human input
 
-    ToImprove --> Doing: work_start (DEV fix)
-    Refining --> ToDo: Human decision
+    ToImprove --> Doing: Scheduler picks up DEV fix
+    Refining --> ToDo: Human decides
 
     Done --> [*]
 ```
 
-### The eight state labels
+These labels live on your actual GitHub/GitLab issues. Not in some internal database — in the tool you already use. Filter by `Doing` in GitHub to see what's in progress. Set up a webhook on `Done` to trigger deploys. The issue tracker is the source of truth.
 
-| Label | Color | Meaning |
-|---|---|---|
-| **Planning** | Blue-grey | Pre-work review — issue exists but not ready for development |
-| **To Do** | Blue | Ready for DEV pickup |
-| **Doing** | Orange | DEV actively working |
-| **To Test** | Cyan | Ready for QA pickup |
-| **Testing** | Purple | QA actively reviewing |
-| **Done** | Green | Complete — issue closed |
-| **To Improve** | Red | QA failed — back to DEV |
-| **Refining** | Yellow | Awaiting human decision |
+### What "atomic" means here
 
-### Worker self-reporting
+When you say "pick up #42 for DEV", the plugin does all of this in one operation:
+1. Verifies the issue is in the right state
+2. Picks the developer level (or uses what you specified)
+3. Transitions the label (`To Do` → `Doing`)
+4. Creates or reuses the right worker session
+5. Dispatches the task with project-specific instructions
+6. Updates internal state
+7. Logs an audit entry
 
-Workers call `work_finish` directly when they're done — no orchestrator involvement needed for the state transition. Workers can also call `task_create` to file follow-up issues they discover during work.
-
-### Completion enforcement
-
-Three layers guarantee tasks never get stuck:
-
-1. **Completion contract** — Every task message includes a mandatory section requiring `work_finish`, even on failure. Workers use `"blocked"` if stuck.
-2. **Blocked result** — Both DEV and QA can gracefully put a task back in queue (`Doing → To Do`, `Testing → To Test`).
-3. **Stale worker watchdog** — Heartbeat detects workers active >2 hours and auto-reverts labels to queue.
+If step 4 fails, step 3 is rolled back. No half-states, no orphaned labels, no "the issue says Doing but nobody's working on it."
 
 ---
 
-## Installation
+## What happens behind the scenes
 
-### Requirements
+### Workers report back themselves
 
-| Requirement | Why | Verify |
-|---|---|---|
-| [OpenClaw](https://openclaw.ai) | DevClaw is an OpenClaw plugin | `openclaw --version` |
-| Node.js >= 20 | Plugin runtime | `node --version` |
-| [`gh`](https://cli.github.com) or [`glab`](https://gitlab.com/gitlab-org/cli) CLI | Issue tracker provider (auto-detected from git remote) | `gh --version` / `glab --version` |
-| CLI authenticated | Plugin calls gh/glab for every label transition | `gh auth status` / `glab auth status` |
+When a developer finishes, they call `work_finish` directly — no orchestrator involved:
 
-### Install the plugin
+- **DEV "done"** → label moves to `To Test`, scheduler picks up QA on next tick
+- **DEV "blocked"** → label moves back to `To Do`, task returns to queue
+- **QA "pass"** → label moves to `Done`, issue closes
+- **QA "fail"** → label moves to `To Improve`, scheduler picks up DEV on next tick
+
+The orchestrator doesn't need to poll, check, or coordinate. Workers are self-reporting.
+
+### Sessions accumulate context
+
+Each developer level gets its own persistent session per project. Your medior dev that's done 5 features on `my-app` already knows the codebase — it doesn't re-read 50K tokens of source code every time it picks up a new task.
+
+That's a **~40-60% token saving per task** from session reuse alone.
+
+Combined with tier selection (not using Opus when Haiku will do) and the token-free heartbeat (more on that next), DevClaw significantly reduces your token bill versus running everything through one large model.
+
+### Everything is logged
+
+Every tool call writes an NDJSON line to `audit.log`:
+
+```bash
+cat audit.log | jq 'select(.event=="work_start")'
+```
+
+Full trace of every task, every level selection, every label transition, every health fix. No manual logging needed.
+
+---
+
+## Automatic scheduling
+
+DevClaw doesn't wait for you to tell it what to do next. A background scheduling system continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code. This is the engine that keeps the pipeline moving: when DEV finishes, the scheduler sees a `To Test` issue and dispatches QA. When QA fails, the scheduler sees a `To Improve` issue and dispatches DEV. No hand-offs, no orchestrator reasoning — just label-driven scheduling.
+
+### The `work_heartbeat`
+
+Every tick (default: 60 seconds), the scheduler runs two passes:
+
+1. **Health pass** — detects workers stuck for >2 hours, reverts their labels back to queue, deactivates them. Catches crashed sessions, context overflows, or workers that died without reporting back.
+2. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Test` > `To Do`), fills free worker slots. DEV and QA slots are filled independently.
+
+All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing. The scheduler also fires immediately after every `work_finish` (as a tick), so transitions happen without waiting for the next interval.
+
+### How tasks flow between roles
+
+When a worker calls `work_finish`, the plugin transitions the label. The scheduler picks up the rest:
+
+- **DEV "done"** → label moves to `To Test` → next tick dispatches QA
+- **QA "fail"** → label moves to `To Improve` → next tick dispatches DEV (reuses previous level)
+- **QA "pass"** → label moves to `Done`, issue closes
+- **"blocked"** → label reverts to queue (`To Do` or `To Test`) for retry
+
+No orchestrator involvement. Workers self-report, the scheduler fills free slots.
+
+### Execution modes
+
+Each project is fully isolated — its own queue, workers, sessions, state. No cross-project contamination. Two levels of parallelism control how work gets scheduled:
+
+- **Project-level (`roleExecution`)** — DEV and QA work simultaneously on different tasks (default: `parallel`) or take turns (`sequential`)
+- **Plugin-level (`projectExecution`)** — all registered projects dispatch workers independently (default: `parallel`) or only one project runs at a time (`sequential`)
+
+### Configuration
+
+All scheduling behavior is configurable in `openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "devclaw": {
+        "config": {
+          "work_heartbeat": {
+            "enabled": true,
+            "intervalSeconds": 60,
+            "maxPickupsPerTick": 4
+          },
+          "projectExecution": "parallel"
+        }
+      }
+    }
+  }
+}
+```
+
+Per-project settings live in `projects.json`:
+
+```json
+{
+  "-1234567890": {
+    "name": "my-app",
+    "roleExecution": "parallel"
+  }
+}
+```
+
+| Setting | Where | Default | What it controls |
+|---|---|---|---|
+| `work_heartbeat.enabled` | `openclaw.json` | `true` | Turn the heartbeat on/off |
+| `work_heartbeat.intervalSeconds` | `openclaw.json` | `60` | Seconds between ticks |
+| `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4` | Max workers dispatched per tick |
+| `projectExecution` | `openclaw.json` | `"parallel"` | All projects at once, or one at a time |
+| `roleExecution` | `projects.json` | `"parallel"` | DEV+QA at once, or one role at a time |
+
+See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
+
+---
+
+## Task management
+
+### Your issues stay in your tracker
+
+DevClaw doesn't have its own task database. All task state lives in **GitHub Issues** or **GitLab Issues** — auto-detected from your git remote. The eight pipeline labels are created on your repo when you register a project. Your project manager sees progress in GitHub without knowing DevClaw exists. Your CI/CD can trigger on label changes. If you stop using DevClaw, your issues and labels stay exactly where they are.
+
+The provider is pluggable (`IssueProvider` interface). GitHub and GitLab work today. Jira, Linear, or anything else just needs to implement the same interface.
+
+### Creating, updating, and commenting
+
+Tasks can come from anywhere — the orchestrator creates them from chat, workers file bugs they discover mid-task, or you create them directly in GitHub/GitLab:
+
+```
+You:    "Create an issue: fix the broken OAuth redirect"
+Agent:  creates issue #43 with label "Planning"
+
+You:    "Move #43 to To Do"
+Agent:  transitions label Planning → To Do
+
+You:    "Add a comment on #42: needs to handle the edge case for expired tokens"
+Agent:  adds comment attributed to "orchestrator"
+```
+
+Workers can also comment during work — QA leaves review feedback, DEV posts implementation notes. Every comment carries role attribution so you know who said what.
+
+### Custom instructions per project
+
+Each project gets instruction files that workers receive with every task they pick up:
+
+```
+workspace/projects/roles/
+├── my-webapp/
+│   ├── dev.md     "Run npm test before committing. Deploy URL: staging.example.com"
+│   └── qa.md      "Check OAuth flow. Verify mobile responsiveness."
+├── my-api/
+│   ├── dev.md     "Run cargo test. Follow REST conventions in CONTRIBUTING.md"
+│   └── qa.md      "Verify all endpoints return correct status codes."
+└── default/
+    ├── dev.md     (fallback for projects without custom instructions)
+    └── qa.md
+```
+
+Deployment steps, test commands, coding standards, acceptance criteria — all injected at dispatch time, per project, per role.
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- [OpenClaw](https://openclaw.ai) installed (`openclaw --version`)
+- Node.js >= 20
+- `gh` CLI ([GitHub](https://cli.github.com)) or `glab` CLI ([GitLab](https://gitlab.com/gitlab-org/cli)), authenticated
+
+### Install
 
 ```bash
 cp -r devclaw ~/.openclaw/extensions/
 ```
 
-### Onboarding
+### Set up through conversation
 
-The recommended way to set up DevClaw is through a conversation with any agent that has the plugin loaded. Call the `onboard` tool and the agent walks you through everything step by step:
+The easiest way to configure DevClaw is to just talk to your agent:
 
 ```
 You:   "Help me set up DevClaw"
-Agent: calls onboard({ mode: "first-run" })
+Agent: "I'll walk you through it. Should I use this agent as the
+        orchestrator, or create a new one?"
+You:   "Use this one"
 
-Agent: "I'll help you set up DevClaw. First — should I configure this agent
-        as the orchestrator, or create a new one?"
-You:   "Use this agent"
-
-Agent: "Got it. Do you want to bind a messaging channel? (telegram/whatsapp/none)"
+Agent: "Want to bind a messaging channel?"
 You:   "Telegram"
 
-Agent: "Default model tiers:
-        DEV junior → Haiku, medior → Sonnet, senior → Opus
-        QA reviewer → Sonnet, tester → Haiku
-        Accept defaults or customize?"
-You:   "Defaults are fine"
+Agent: "Here are the default developer assignments:
+        Junior → Haiku, Medior → Sonnet, Senior → Opus
+        Reviewer → Sonnet, Tester → Haiku
+        Keep these or customize?"
+You:   "Keep them"
 
-Agent: calls setup({ agentId: "my-agent", channelBinding: "telegram", ... })
-Agent: "Done! Workspace configured. Want to register a project now?"
-You:   "Yes — register my-app at ~/git/my-app"
+Agent: "Done. Want to register a project?"
+You:   "Yes — my-app at ~/git/my-app, main branch"
 
-Agent: calls project_register({ ... })
-Agent: "Project registered. 8 labels created, role instructions scaffolded.
-        Try: 'check the queue' to see pending issues."
+Agent: "Project registered. 8 labels created on your repo.
+        Role instructions scaffolded. Try: 'check the queue'"
 ```
 
-After setup, work flows naturally through conversation in your project's group chat:
-
-```
-"Check the queue"           → agent calls status
-"Pick up issue #1 for DEV"  → agent calls work_start
-[DEV works autonomously]    → calls work_finish when done
-[Heartbeat fills next slot] → QA dispatched automatically
-```
-
-DevClaw also supports a [CLI wizard and non-interactive setup](docs/ONBOARDING.md#step-2-run-setup) for scripted or headless environments. See the [Onboarding Guide](docs/ONBOARDING.md) for the full step-by-step reference.
+You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#step-2-run-setup) for scripted environments.
 
 ---
 
-## Architecture
+## The toolbox
 
-For detailed technical diagrams — system overview, end-to-end flows, session-per-level design, session reuse mechanics, data flow map, and the complete ticket lifecycle from creation to completion — see the [Architecture documentation](docs/ARCHITECTURE.md).
+DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
----
-
-## Tools
-
-DevClaw's tools are the guardrails that make autonomous development reliable. Without them, an LLM orchestrator would need to reason about label transitions, session lifecycle, state serialization, and audit logging on every action — and get it wrong often enough to require constant supervision. Each tool encodes one operation as deterministic code: the agent provides intent ("pick up issue #42 for DEV"), the tool handles the mechanics (verify label, resolve level, transition state, dispatch session, log event, return announcement). The agent can't skip a step, use the wrong label, or forget to update state — those decisions are made by the plugin, not the model.
-
-DevClaw registers **11 tools**, grouped by function:
-
-### Worker lifecycle
-
-| Tool | Description |
+| Tool | What it does |
 |---|---|
-| [`work_start`](docs/TOOLS.md#work_start) | Pick up a task — handles level assignment, label transition, session dispatch, audit |
-| [`work_finish`](docs/TOOLS.md#work_finish) | Complete a task — handles label transition, state update, queue tick |
+| `work_start` | Pick up a task — resolves level, transitions label, dispatches session, logs audit |
+| `work_finish` | Complete a task — transitions label, updates state, ticks queue for next dispatch |
+| `task_create` | Create a new issue (used by workers to file bugs they discover) |
+| `task_update` | Manually change an issue's state label |
+| `task_comment` | Add a comment to an issue (with role attribution) |
+| `status` | Dashboard: queue counts + who's working on what |
+| `health` | Detect zombie workers, stale sessions, state inconsistencies |
+| `work_heartbeat` | Manually trigger a health check + queue dispatch cycle |
+| `project_register` | One-time project setup: creates labels, scaffolds instructions, initializes state |
+| `setup` | Agent + workspace initialization |
+| `onboard` | Conversational setup guide |
 
-### Task management
-
-| Tool | Description |
-|---|---|
-| [`task_create`](docs/TOOLS.md#task_create) | Create a new issue in the tracker |
-| [`task_update`](docs/TOOLS.md#task_update) | Change an issue's state label manually |
-| [`task_comment`](docs/TOOLS.md#task_comment) | Add a comment to an issue |
-
-### Operations
-
-| Tool | Description |
-|---|---|
-| [`status`](docs/TOOLS.md#status) | Queue counts + worker state dashboard |
-| [`health`](docs/TOOLS.md#health) | Worker health checks + zombie detection |
-| [`work_heartbeat`](docs/TOOLS.md#work_heartbeat) | Manual trigger for health + queue dispatch |
-
-### Setup
-
-| Tool | Description |
-|---|---|
-| [`project_register`](docs/TOOLS.md#project_register) | One-time project setup (labels, prompts, state) |
-| [`setup`](docs/TOOLS.md#setup) | Agent + workspace initialization |
-| [`onboard`](docs/TOOLS.md#onboard) | Conversational onboarding guide |
-
-See the [Tools Reference](docs/TOOLS.md) for full parameters and usage.
+Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
 ---
 
 ## Documentation
 
-| Document | Description |
+| | |
 |---|---|
-| [Architecture](docs/ARCHITECTURE.md) | System design, session-per-level model, data flow, component interactions |
-| [Tools Reference](docs/TOOLS.md) | Complete reference for all 11 tools with parameters and examples |
-| [Configuration](docs/CONFIGURATION.md) | Full config reference — `openclaw.json`, `projects.json`, heartbeat, notifications |
-| [Onboarding Guide](docs/ONBOARDING.md) | Step-by-step setup: install, configure, register projects, test the pipeline |
-| [QA Workflow](docs/QA_WORKFLOW.md) | QA process: review documentation, comment templates, enforcement |
-| [Context Awareness](docs/CONTEXT-AWARENESS.md) | How DevClaw adapts behavior based on interaction context |
-| [Testing Guide](docs/TESTING.md) | Automated test suite: scenarios, fixtures, CI/CD integration |
-| [Management Theory](docs/MANAGEMENT.md) | The delegation theory behind DevClaw's design |
-| [Roadmap](docs/ROADMAP.md) | Planned features: configurable roles, channel-agnostic groups, Jira |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design, session model, data flow, end-to-end diagrams |
+| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 11 tools |
+| **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, heartbeat, notifications |
+| **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
+| **[QA Workflow](docs/QA_WORKFLOW.md)** | QA process and review templates |
+| **[Context Awareness](docs/CONTEXT-AWARENESS.md)** | How tools adapt to group vs. DM vs. agent context |
+| **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
+| **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
+| **[Roadmap](docs/ROADMAP.md)** | What's coming next |
 
 ---
 
