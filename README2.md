@@ -34,28 +34,37 @@ Agent:  "✅ DEV DONE #18 — OAuth2 provider with refresh tokens. Moved to QA."
 Agent:  "🔍 Sending QA (reviewer) for #18: Migrate auth to OAuth2"
 Agent:  "🎉 QA PASS #18. Issue closed."
 Agent:  "⚡ Sending DEV (medior) for #19: Add rate limiting to /api/search"
-```
 
-Three issues shipped, one sent back for a fix (and auto-retried), another project's migration completed — all while you slept. The heartbeat scanned the queues, dispatched workers, chained DEV into QA, and chained QA failures back to DEV. No human in the loop.
+── You jump in ─────────────────────────────────────────
 
-You can also plan and steer in the same chat — the orchestrator is right there:
-
-```
-You:    "Check the queue"
-Agent:  "2 issues in To Do. DEV is idle. QA is idle."
+You:    "How's the frontend looking?"
+Agent:  "#41 shipped, #42 shipped, #43 back in DEV (dark-mode fix).
+         1 issue left in To Do. DEV is working, QA is idle."
 
 You:    "We need to refactor the profile page before we add settings.
-         Create an issue for that, mark it as To Do, and pick it up."
-Agent:  creates #44 "Refactor user profile page" with label "To Do"
+         Create an issue for that, mark it high priority, and pick it up."
+Agent:  creates #44 "Refactor user profile page" — To Do, priority: high
 Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
 
 You:    "Also create an issue for adding the settings page.
          Keep it in Planning until #44 is done."
-Agent:  creates #45 "Add settings page" with label "Planning"
+Agent:  creates #45 "Add settings page" — Planning
 Agent:  "Parked in Planning. I'll move it to To Do once #44 ships."
+
+You:    "Push these to Linear."
+Agent:  synced #44 → LIN-312 "Refactor user profile page"
+Agent:  synced #45 → LIN-313 "Add settings page"
+Agent:  "Both issues synced to Linear."
+
+── Autonomous work continues ───────────────────────────
+
+Agent:  "✅ DEV DONE #43 — Fixed dark-mode color. Back to QA."
+Agent:  "🎉 QA PASS #43. Issue closed."
+Agent:  "✅ DEV DONE #44 — Profile page refactored. Moved to QA."
+Agent:  "📋 Moving #45 to To Do — dependency #44 is in QA."
 ```
 
-Same group chat for planning, prioritizing, and execution. Same agent, as many groups as you want, fully isolated teams per project.
+Three issues shipped, one sent back for a fix (and auto-retried), another project's migration completed — all while you slept. And when you dropped in, you planned work, reprioritized, and synced to your external tracker without leaving the chat. The heartbeat kept going before, during, and after.
 
 ---
 
