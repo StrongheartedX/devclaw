@@ -32,6 +32,9 @@
     "roles/",
     "docs/"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
