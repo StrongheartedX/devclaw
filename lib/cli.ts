@@ -4,13 +4,14 @@
  * Uses Commander.js (provided by OpenClaw plugin SDK context).
  */
 import type { Command } from "commander";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { runSetup } from "./setup/index.js";
 import { DEV_LEVELS, QA_LEVELS, DEFAULT_MODELS } from "./tiers.js";
 
 /**
  * Register the `devclaw` CLI command group on a Commander program.
  */
-export function registerCli(program: Command): void {
+export function registerCli(program: Command, api: OpenClawPluginApi): void {
   const devclaw = program
     .command("devclaw")
     .description("DevClaw development pipeline tools");
@@ -41,6 +42,7 @@ export function registerCli(program: Command): void {
         : undefined;
 
       const result = await runSetup({
+        api,
         newAgentName: opts.newAgent,
         agentId: opts.agent,
         workspacePath: opts.workspace,

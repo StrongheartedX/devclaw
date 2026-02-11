@@ -4,6 +4,7 @@
  * Coordinates: agent creation → model config → workspace scaffolding.
  * Used by both the `setup` tool and the `openclaw devclaw setup` CLI command.
  */
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { DEFAULT_MODELS } from "../tiers.js";
 import { migrateChannelBinding } from "../binding-manager.js";
 import { createAgent, resolveWorkspacePath } from "./agent.js";
@@ -13,6 +14,8 @@ import { scaffoldWorkspace } from "./workspace.js";
 export type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
 
 export type SetupOpts = {
+  /** OpenClaw plugin API for config access. */
+  api: OpenClawPluginApi;
   /** Create a new agent with this name. Mutually exclusive with agentId. */
   newAgentName?: string;
   /** Channel binding for new agent. Only used when newAgentName is set. */
@@ -56,7 +59,7 @@ export async function runSetup(opts: SetupOpts): Promise<SetupResult> {
     await resolveOrCreateAgent(opts, warnings);
 
   const models = buildModelConfig(opts.models);
-  await writePluginConfig(models, agentId, opts.projectExecution);
+  await writePluginConfig(opts.api, models, agentId, opts.projectExecution);
 
   const filesWritten = await scaffoldWorkspace(workspacePath);
 
@@ -77,13 +80,13 @@ async function resolveOrCreateAgent(
   bindingMigrated?: SetupResult["bindingMigrated"];
 }> {
   if (opts.newAgentName) {
-    const { agentId, workspacePath } = await createAgent(opts.newAgentName, opts.channelBinding);
+    const { agentId, workspacePath } = await createAgent(opts.api, opts.newAgentName, opts.channelBinding);
     const bindingMigrated = await tryMigrateBinding(opts, agentId, warnings);
     return { agentId, workspacePath, agentCreated: true, bindingMigrated };
   }
 
   if (opts.agentId) {
-    const workspacePath = opts.workspacePath ?? await resolveWorkspacePath(opts.agentId);
+    const workspacePath = opts.workspacePath ?? resolveWorkspacePath(opts.api, opts.agentId);
     return { agentId: opts.agentId, workspacePath, agentCreated: false };
   }
 
@@ -101,7 +104,7 @@ async function tryMigrateBinding(
 ): Promise<SetupResult["bindingMigrated"]> {
   if (!opts.migrateFrom || !opts.channelBinding) return undefined;
   try {
-    await migrateChannelBinding(opts.channelBinding, opts.migrateFrom, agentId);
+    await migrateChannelBinding(opts.api, opts.channelBinding, opts.migrateFrom, agentId);
     return { from: opts.migrateFrom, channel: opts.channelBinding };
   } catch (err) {
     warnings.push(`Failed to migrate binding from "${opts.migrateFrom}": ${(err as Error).message}`);

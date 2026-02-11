@@ -5,18 +5,16 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 
 const execFileAsync = promisify(execFile);
-
-function openclawConfigPath(): string {
-  return path.join(process.env.HOME ?? "/home/lauren", ".openclaw", "openclaw.json");
-}
 
 /**
  * Create a new agent via `openclaw agents add`.
  * Cleans up .git and BOOTSTRAP.md from the workspace, updates display name.
  */
 export async function createAgent(
+  api: OpenClawPluginApi,
   name: string,
   channelBinding?: "telegram" | "whatsapp" | null,
 ): Promise<{ agentId: string; workspacePath: string }> {
@@ -25,13 +23,7 @@ export async function createAgent(
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
 
-  const workspacePath = path.join(
-    process.env.HOME ?? "/home/lauren",
-    ".openclaw",
-    `workspace-${agentId}`,
-  );
-
-  const args = ["agents", "add", agentId, "--workspace", workspacePath, "--non-interactive"];
+  const args = ["agents", "add", agentId, "--non-interactive"];
   if (channelBinding) args.push("--bind", channelBinding);
 
   try {
@@ -40,20 +32,19 @@ export async function createAgent(
     throw new Error(`Failed to create agent "${name}": ${(err as Error).message}`);
   }
 
+  const workspacePath = resolveWorkspacePath(api, agentId);
   await cleanupWorkspace(workspacePath);
-  await updateAgentDisplayName(agentId, name);
+  await updateAgentDisplayName(api, agentId, name);
 
   return { agentId, workspacePath };
 }
 
 /**
- * Resolve workspace path from an agent ID by reading openclaw.json.
+ * Resolve workspace path from an agent ID via OpenClaw config API.
  */
-export async function resolveWorkspacePath(agentId: string): Promise<string> {
-  const raw = await fs.readFile(openclawConfigPath(), "utf-8");
-  const config = JSON.parse(raw);
-
-  const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
+export function resolveWorkspacePath(api: OpenClawPluginApi, agentId: string): string {
+  const config = api.runtime.config.loadConfig();
+  const agent = config.agents?.list?.find((a) => a.id === agentId);
   if (!agent?.workspace) {
     throw new Error(`Agent "${agentId}" not found in openclaw.json or has no workspace configured.`);
   }
@@ -71,15 +62,14 @@ async function cleanupWorkspace(workspacePath: string): Promise<void> {
   try { await fs.unlink(path.join(workspacePath, "BOOTSTRAP.md")); } catch { /* may not exist */ }
 }
 
-async function updateAgentDisplayName(agentId: string, name: string): Promise<void> {
+async function updateAgentDisplayName(api: OpenClawPluginApi, agentId: string, name: string): Promise<void> {
   if (name === agentId) return;
   try {
-    const configPath = openclawConfigPath();
-    const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
-    const agent = config.agents?.list?.find((a: { id: string }) => a.id === agentId);
+    const config = api.runtime.config.loadConfig();
+    const agent = config.agents?.list?.find((a) => a.id === agentId);
     if (agent) {
-      agent.name = name;
-      await fs.writeFile(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
+      (agent as any).name = name;
+      await api.runtime.config.writeConfigFile(config);
     }
   } catch (err) {
     console.warn(`Warning: Could not update display name: ${(err as Error).message}`);

@@ -81,6 +81,7 @@ export function createSetupTool(api: OpenClawPluginApi) {
 
     async execute(_id: string, params: Record<string, unknown>) {
       const result = await runSetup({
+        api,
         newAgentName: params.newAgentName as string | undefined,
         channelBinding:
           (params.channelBinding as "telegram" | "whatsapp") ?? null,

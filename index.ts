@@ -110,7 +110,7 @@ const plugin = {
     api.registerTool(createOnboardTool(api), { names: ["onboard"] });
 
     // CLI
-    api.registerCli(({ program }: { program: any }) => registerCli(program), {
+    api.registerCli(({ program }: { program: any }) => registerCli(program, api), {
       commands: ["devclaw"],
     });
 

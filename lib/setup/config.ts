@@ -3,15 +3,10 @@
  *
  * Handles: model level config, devClawAgentIds, tool restrictions, subagent cleanup.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { HEARTBEAT_DEFAULTS } from "../services/heartbeat.js";
 
 type ModelConfig = { dev: Record<string, string>; qa: Record<string, string> };
-
-function openclawConfigPath(): string {
-  return path.join(process.env.HOME ?? "/home/lauren", ".openclaw", "openclaw.json");
-}
 
 /**
  * Write DevClaw model level config and devClawAgentIds to openclaw.json plugins section.
@@ -23,18 +18,18 @@ function openclawConfigPath(): string {
  * Read-modify-write to preserve existing config.
  */
 export async function writePluginConfig(
+  api: OpenClawPluginApi,
   models: ModelConfig,
   agentId?: string,
   projectExecution?: "parallel" | "sequential",
 ): Promise<void> {
-  const configPath = openclawConfigPath();
-  const config = JSON.parse(await fs.readFile(configPath, "utf-8"));
+  const config = api.runtime.config.loadConfig() as Record<string, unknown>;
 
   ensurePluginStructure(config);
-  config.plugins.entries.devclaw.config.models = models;
+  (config as any).plugins.entries.devclaw.config.models = models;
 
   if (projectExecution) {
-    config.plugins.entries.devclaw.config.projectExecution = projectExecution;
+    (config as any).plugins.entries.devclaw.config.projectExecution = projectExecution;
   }
 
   ensureHeartbeatDefaults(config);
@@ -45,9 +40,7 @@ export async function writePluginConfig(
     addToolRestrictions(config, agentId);
   }
 
-  const tmpPath = configPath + ".tmp";
-  await fs.writeFile(tmpPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  await fs.rename(tmpPath, configPath);
+  await api.runtime.config.writeConfigFile(config as any);
 }
 
 // ---------------------------------------------------------------------------
