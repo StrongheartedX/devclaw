@@ -65,7 +65,7 @@ When a task comes in, you don't configure `anthropic/claude-sonnet-4-5` — you 
 
 ### Developers
 
-| Who | What they do | Under the hood |
+| Level | Assigns to | Model |
 |---|---|---|
 | **Junior** | Typos, CSS fixes, renames, single-file changes | Haiku |
 | **Medior** | Features, bug fixes, multi-file changes | Sonnet |
@@ -73,7 +73,7 @@ When a task comes in, you don't configure `anthropic/claude-sonnet-4-5` — you 
 
 ### QA
 
-| Who | What they do | Under the hood |
+| Level | Assigns to | Model |
 |---|---|---|
 | **Reviewer** | Code review, test validation, PR inspection | Sonnet |
 | **Tester** | Manual testing, smoke tests | Haiku |
@@ -149,15 +149,6 @@ That's a **~40-60% token saving per task** from session reuse alone.
 
 Combined with tier selection (not using Opus when Haiku will do) and the token-free heartbeat (more on that next), DevClaw significantly reduces your token bill versus running everything through one large model.
 
-### The heartbeat runs for free
-
-Every 60 seconds, a background service:
-- Checks if any workers have been stuck for >2 hours (reverts them)
-- Scans the queue for available tasks
-- Dispatches workers to fill empty slots
-
-All of this is deterministic code — CLI calls and JSON reads. Zero LLM tokens. Workers only consume tokens when they're actually writing code or reviewing PRs.
-
 ### Everything is logged
 
 Every tool call writes an NDJSON line to `audit.log`:
@@ -170,23 +161,113 @@ Full trace of every task, every level selection, every label transition, every h
 
 ---
 
-## Your issues, your tracker
+## Automatic scheduling
 
-DevClaw doesn't replace your issue tracker — it uses it. All task state lives in GitHub Issues or GitLab Issues (auto-detected from your git remote). The eight pipeline labels are created on your repo when you register a project.
+DevClaw doesn't wait for you to tell it what to do next. A background heartbeat service continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code.
 
-The abstraction layer (`IssueProvider`) is pluggable. GitHub and GitLab work today. Jira, Linear, or anything else just needs to implement the same interface.
+### The heartbeat
 
-This means:
-- Your project manager sees task progress in GitHub/GitLab without knowing DevClaw exists
-- Your CI/CD can trigger on label changes
-- Your existing dashboards and filters keep working
-- If you stop using DevClaw, your issues and labels stay exactly where they are
+Every tick, the service runs two passes:
+
+1. **Health pass** — detects workers stuck for >2 hours, reverts their labels back to queue, deactivates them. Catches crashed sessions, context overflows, or workers that died without reporting back.
+2. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Test` > `To Do`), fills free worker slots. DEV and QA slots are filled independently.
+
+All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing.
+
+### Auto-chaining
+
+When enabled, task completions automatically trigger the next step:
+
+- **DEV "done"** → QA reviewer is dispatched immediately
+- **QA "fail"** → DEV is re-dispatched at the same level that originally worked on it
+- **QA "pass"** → issue closes, pipeline done
+- **"blocked"** → task returns to queue for retry, no chaining
+
+No orchestrator involvement. The worker calls `work_finish`, the plugin handles the rest.
+
+### Execution modes
+
+Each project is fully isolated — its own queue, workers, sessions, state. No cross-project contamination. Two levels of parallelism control how work gets scheduled:
+
+- **Project-level (`roleExecution`)** — DEV and QA work simultaneously on different tasks (default: `parallel`) or take turns (`sequential`)
+- **Plugin-level (`projectExecution`)** — all registered projects dispatch workers independently (default: `parallel`) or only one project runs at a time (`sequential`)
+
+### Configuration
+
+All scheduling behavior is configurable in `openclaw.json`:
+
+```json
+{
+  "plugins": {
+    "entries": {
+      "devclaw": {
+        "config": {
+          "work_heartbeat": {
+            "enabled": true,
+            "intervalSeconds": 60,
+            "maxPickupsPerTick": 4
+          },
+          "projectExecution": "parallel"
+        }
+      }
+    }
+  }
+}
+```
+
+Per-project settings live in `projects.json`:
+
+```json
+{
+  "-1234567890": {
+    "name": "my-app",
+    "autoChain": true,
+    "roleExecution": "parallel"
+  }
+}
+```
+
+| Setting | Where | Default | What it controls |
+|---|---|---|---|
+| `work_heartbeat.enabled` | `openclaw.json` | `true` | Turn the heartbeat on/off |
+| `work_heartbeat.intervalSeconds` | `openclaw.json` | `60` | Seconds between ticks |
+| `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4` | Max workers dispatched per tick |
+| `projectExecution` | `openclaw.json` | `"parallel"` | All projects at once, or one at a time |
+| `autoChain` | `projects.json` | `false` | Auto-dispatch next step on completion |
+| `roleExecution` | `projects.json` | `"parallel"` | DEV+QA at once, or one role at a time |
+
+See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
 ---
 
-## Custom instructions per project
+## Task management
 
-Each project gets its own instruction files that workers receive with every task:
+### Your issues stay in your tracker
+
+DevClaw doesn't have its own task database. All task state lives in **GitHub Issues** or **GitLab Issues** — auto-detected from your git remote. The eight pipeline labels are created on your repo when you register a project. Your project manager sees progress in GitHub without knowing DevClaw exists. Your CI/CD can trigger on label changes. If you stop using DevClaw, your issues and labels stay exactly where they are.
+
+The provider is pluggable (`IssueProvider` interface). GitHub and GitLab work today. Jira, Linear, or anything else just needs to implement the same interface.
+
+### Creating, updating, and commenting
+
+Tasks can come from anywhere — the orchestrator creates them from chat, workers file bugs they discover mid-task, or you create them directly in GitHub/GitLab:
+
+```
+You:    "Create an issue: fix the broken OAuth redirect"
+Agent:  creates issue #43 with label "Planning"
+
+You:    "Move #43 to To Do"
+Agent:  transitions label Planning → To Do
+
+You:    "Add a comment on #42: needs to handle the edge case for expired tokens"
+Agent:  adds comment attributed to "orchestrator"
+```
+
+Workers can also comment during work — QA leaves review feedback, DEV posts implementation notes. Every comment carries role attribution so you know who said what.
+
+### Custom instructions per project
+
+Each project gets instruction files that workers receive with every task they pick up:
 
 ```
 workspace/projects/roles/
@@ -201,7 +282,7 @@ workspace/projects/roles/
     └── qa.md
 ```
 
-Deployment steps, test commands, coding standards, acceptance criteria — all injected automatically at dispatch time.
+Deployment steps, test commands, coding standards, acceptance criteria — all injected at dispatch time, per project, per role.
 
 ---
 
@@ -268,18 +349,6 @@ DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers 
 | `onboard` | Conversational setup guide |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
-
----
-
-## Parallel everything
-
-Each project is fully isolated — its own queue, workers, sessions, and state. No cross-project contamination.
-
-Two execution modes:
-- **Project-level** — DEV and QA work simultaneously on different tasks (default) or take turns
-- **Plugin-level** — all projects run in parallel (default) or one at a time
-
-One agent, many groups, many projects, all at once.
 
 ---
 
