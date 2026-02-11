@@ -102,7 +102,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`status\` | Task queue and worker state per project (lightweight dashboard) |
 | \`health\` | Scan worker health: zombies, stale workers, orphaned state. Pass fix=true to auto-fix |
 | \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
-| \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Auto-ticks queue after completion. |
+| \`work_finish\` | End-to-end: label transition, state update, issue close/reopen. Ticks scheduler after completion. |
 
 ### Pipeline Flow
 
@@ -135,10 +135,10 @@ Evaluate each task and pass the appropriate developer level to \`work_start\`:
 
 ### When Work Completes
 
-Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. After completion, \`work_finish\` auto-ticks the queue to fill free slots:
+Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. After completion, \`work_finish\` ticks the scheduler to fill free slots:
 
-- DEV "done" → issue moves to "To Test" → tick dispatches QA
-- QA "fail" → issue moves to "To Improve" → tick dispatches DEV
+- DEV "done" → issue moves to "To Test" → scheduler dispatches QA
+- QA "fail" → issue moves to "To Improve" → scheduler dispatches DEV
 - QA "pass" → Done, no further dispatch
 - QA "refine" / blocked → needs human input
 

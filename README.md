@@ -12,7 +12,7 @@ DevClaw is the [OpenClaw](https://openclaw.ai) plugin that makes this work.
 
 ## Why DevClaw
 
-OpenClaw gives you a powerful multi-agent runtime — channel bindings, session management, tool permissions, gateway RPC. But it's a general-purpose platform. It doesn't know what "pick up an issue" means, how to transition a label, when to reuse a session, or how to chain DEV completion into QA review. Managing a development workflow on raw OpenClaw means the orchestrator agent handles all of that through fragile, token-expensive LLM reasoning — and it gets it wrong often enough to need constant supervision. DevClaw encodes the entire development lifecycle into deterministic plugin code: level assignment, label transitions, session dispatch, auto-chaining, health checks, and audit logging. The agent calls one tool. The plugin does the rest. That's the difference between "an agent that can write code" and "a team that ships autonomously."
+OpenClaw gives you a powerful multi-agent runtime — channel bindings, session management, tool permissions, gateway RPC. But it's a general-purpose platform. It doesn't know what "pick up an issue" means, how to transition a label, when to reuse a session, or how to schedule QA after DEV completes. Managing a development workflow on raw OpenClaw means the orchestrator agent handles all of that through fragile, token-expensive LLM reasoning — and it gets it wrong often enough to need constant supervision. DevClaw encodes the entire development lifecycle into deterministic plugin code: level assignment, label transitions, session dispatch, scheduling, health checks, and audit logging. The agent calls one tool. The plugin does the rest. That's the difference between "an agent that can write code" and "a team that ships autonomously."
 
 ## Benefits
 
@@ -47,11 +47,10 @@ The heartbeat service runs a continuous loop: health check → queue scan → di
 
 ### Feedback loops
 
-Three automated feedback loops keep the pipeline self-correcting:
+Two automated feedback loops keep the pipeline self-correcting:
 
-1. **Auto-chaining** — DEV "done" automatically dispatches QA. QA "fail" automatically re-dispatches DEV. No orchestrator action needed.
-2. **Stale worker watchdog** — Workers active >2 hours are auto-detected. Labels revert to queue, workers deactivated. Tasks available for retry.
-3. **Completion enforcement** — Every task message includes a mandatory `work_finish` section. Workers use `"blocked"` if stuck. Three-layer guarantee prevents tasks from getting stuck forever.
+1. **Stale worker watchdog** — Workers active >2 hours are auto-detected. Labels revert to queue, workers deactivated. Tasks available for retry.
+2. **Completion enforcement** — Every task message includes a mandatory `work_finish` section. Workers use `"blocked"` if stuck. Three-layer guarantee prevents tasks from getting stuck forever.
 
 ### Role-based instruction prompts
 
@@ -114,12 +113,12 @@ stateDiagram-v2
     ToDo --> Doing: work_start (DEV) ⇄ blocked
     Doing --> ToTest: work_finish (DEV done)
 
-    ToTest --> Testing: work_start (QA) / auto-chain ⇄ blocked
+    ToTest --> Testing: work_start (QA) ⇄ blocked
     Testing --> Done: work_finish (QA pass)
     Testing --> ToImprove: work_finish (QA fail)
     Testing --> Refining: work_finish (QA refine)
 
-    ToImprove --> Doing: work_start (DEV fix) or auto-chain
+    ToImprove --> Doing: work_start (DEV fix)
     Refining --> ToDo: Human decision
 
     Done --> [*]
@@ -141,15 +140,6 @@ stateDiagram-v2
 ### Worker self-reporting
 
 Workers call `work_finish` directly when they're done — no orchestrator involvement needed for the state transition. Workers can also call `task_create` to file follow-up issues they discover during work.
-
-### Auto-chaining
-
-When a project has auto-chaining enabled:
-
-- **DEV "done"** → QA is dispatched immediately (using the reviewer level)
-- **QA "fail"** → DEV fix is dispatched immediately (reuses previous DEV level)
-- **QA "pass" / "refine" / "blocked"** → no chaining (pipeline done, needs human input, or returned to queue)
-- **DEV "blocked"** → no chaining (returned to queue for retry)
 
 ### Completion enforcement
 
@@ -238,7 +228,7 @@ DevClaw registers **11 tools**, grouped by function:
 | Tool | Description |
 |---|---|
 | [`work_start`](docs/TOOLS.md#work_start) | Pick up a task — handles level assignment, label transition, session dispatch, audit |
-| [`work_finish`](docs/TOOLS.md#work_finish) | Complete a task — handles label transition, state update, auto-chaining, queue tick |
+| [`work_finish`](docs/TOOLS.md#work_finish) | Complete a task — handles label transition, state update, queue tick |
 
 ### Task management
 

@@ -174,7 +174,7 @@ graph TB
     WF -->|closes/reopens| GL
     WF -->|reads/writes| PJ
     WF -->|git pull| REPO
-    WF -->|auto-chain dispatch| CLI
+    WF -->|tick dispatch| CLI
     WF -->|appends| AL
 
     TCR -->|creates issue| GL
@@ -374,7 +374,7 @@ sequenceDiagram
     participant PJ as projects.json
     participant AL as audit.log
     participant REPO as Git Repo
-    participant QA as QA Session (auto-chain)
+    participant QA as QA Session
 
     DEV->>WF: work_finish({ role: "dev", result: "done", projectGroupId: "-123", summary: "Login page with OAuth" })
     WF->>PJ: readProjects()
@@ -385,21 +385,16 @@ sequenceDiagram
     WF->>GL: transitionLabel "Doing" → "To Test"
     WF->>AL: append { event: "work_finish", role: "dev", result: "done" }
 
-    alt autoChain enabled
-        WF->>GL: transitionLabel "To Test" → "Testing"
-        WF->>QA: dispatchTask(role: "qa", level: "reviewer")
-        WF->>PJ: activateWorker(-123, qa)
-        WF-->>DEV: { announcement: "✅ DEV DONE #42", autoChain: { dispatched: true, role: "qa" } }
-    else autoChain disabled
-        WF-->>DEV: { announcement: "✅ DEV DONE #42", nextAction: "qa_pickup" }
-    end
+    WF->>WF: tick queue (fill free slots)
+    Note over WF: Scheduler sees "To Test" issue, QA slot free → dispatches QA
+    WF-->>DEV: { announcement: "✅ DEV DONE #42", tickPickups: [...] }
 ```
 
 **Writes:**
 - `Git repo`: pulled latest (has DEV's merged code)
 - `projects.json`: dev.active=false, dev.issueId=null (sessions map preserved for reuse)
-- `Issue Tracker`: label "Doing" → "To Test" (+ "To Test" → "Testing" if auto-chain)
-- `audit.log`: 1 entry (work_finish) + optional auto-chain entries
+- `Issue Tracker`: label "Doing" → "To Test"
+- `audit.log`: 1 entry (work_finish) + tick entries if workers dispatched
 
 ### Phase 6: QA pickup
 
@@ -462,7 +457,7 @@ DEV Blocked: "Doing" → "To Do"
 QA Blocked:  "Testing" → "To Test"
 ```
 
-Worker cannot complete (missing info, environment errors, etc.). Issue returns to queue for retry. No auto-chain — the task is available for the next heartbeat pickup.
+Worker cannot complete (missing info, environment errors, etc.). Issue returns to queue for retry. The task is available for the next heartbeat pickup.
 
 ### Completion enforcement
 
@@ -517,7 +512,7 @@ Every piece of data and where it lives:
 │                                                                 │
 │  setup          → agent creation + workspace + model config     │
 │  work_start     → level + label + dispatch + role instr (e2e)   │
-│  work_finish    → label + state + git pull + auto-chain         │
+│  work_finish    → label + state + git pull + tick queue          │
 │  task_create    → create issue in tracker                       │
 │  task_update    → manual label state change                     │
 │  task_comment   → add comment to issue                          │
@@ -588,7 +583,7 @@ graph LR
         PR[Project registration]
         SETUP[Agent + workspace setup]
         SD[Session dispatch<br/>create + send via CLI]
-        AC[Auto-chaining<br/>DEV→QA, QA fail→DEV]
+        AC[Scheduling<br/>tick queue after work_finish]
         RI[Role instructions<br/>loaded per project]
         A[Audit logging]
         Z[Zombie cleanup]

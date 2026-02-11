@@ -64,7 +64,7 @@ Agent:  "✅ DEV DONE #44 — Profile page refactored. Moved to QA."
 Agent:  "📋 Moving #45 to To Do — dependency #44 is in QA."
 ```
 
-Three issues shipped, one sent back for a fix (and auto-retried), another project's migration completed — all while you slept. And when you dropped in, you planned work, reprioritized, and synced to your external tracker without leaving the chat. The heartbeat kept going before, during, and after.
+Three issues shipped, one sent back for a fix (the scheduler retried it automatically), another project's migration completed — all while you slept. And when you dropped in, you planned work, reprioritized, and synced to your external tracker without leaving the chat. The heartbeat kept going before, during, and after.
 
 ---
 
@@ -77,7 +77,7 @@ Without DevClaw, your orchestrator agent has to figure out on its own how to:
 - Create or reuse the right worker session
 - Transition issue labels in the right order
 - Track which worker is doing what across projects
-- Chain DEV completion into QA review
+- Schedule QA after DEV completes, and re-schedule DEV after QA fails
 - Detect crashed workers and recover
 - Log everything for auditability
 
@@ -130,12 +130,12 @@ stateDiagram-v2
     ToDo --> Doing: DEV picks up
     Doing --> ToTest: DEV done
 
-    ToTest --> Testing: QA picks up (or auto-chains)
+    ToTest --> Testing: Scheduler picks up QA
     Testing --> Done: QA pass (issue closed)
     Testing --> ToImprove: QA fail (back to DEV)
     Testing --> Refining: QA needs human input
 
-    ToImprove --> Doing: DEV fixes (or auto-chains)
+    ToImprove --> Doing: Scheduler picks up DEV fix
     Refining --> ToDo: Human decides
 
     Done --> [*]
@@ -164,10 +164,10 @@ If step 4 fails, step 3 is rolled back. No half-states, no orphaned labels, no "
 
 When a developer finishes, they call `work_finish` directly — no orchestrator involved:
 
-- **DEV "done"** → label moves to `To Test`, QA starts automatically
+- **DEV "done"** → label moves to `To Test`, scheduler picks up QA on next tick
 - **DEV "blocked"** → label moves back to `To Do`, task returns to queue
 - **QA "pass"** → label moves to `Done`, issue closes
-- **QA "fail"** → label moves to `To Improve`, DEV gets re-dispatched
+- **QA "fail"** → label moves to `To Improve`, scheduler picks up DEV on next tick
 
 The orchestrator doesn't need to poll, check, or coordinate. Workers are self-reporting.
 
@@ -193,27 +193,27 @@ Full trace of every task, every level selection, every label transition, every h
 
 ## Automatic scheduling
 
-DevClaw doesn't wait for you to tell it what to do next. A background heartbeat service continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code.
+DevClaw doesn't wait for you to tell it what to do next. A background scheduling system continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code. This is the engine that keeps the pipeline moving: when DEV finishes, the scheduler sees a `To Test` issue and dispatches QA. When QA fails, the scheduler sees a `To Improve` issue and dispatches DEV. No hand-offs, no orchestrator reasoning — just label-driven scheduling.
 
-### The heartbeat
+### The `work_heartbeat`
 
-Every tick, the service runs two passes:
+Every tick (default: 60 seconds), the scheduler runs two passes:
 
 1. **Health pass** — detects workers stuck for >2 hours, reverts their labels back to queue, deactivates them. Catches crashed sessions, context overflows, or workers that died without reporting back.
 2. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Test` > `To Do`), fills free worker slots. DEV and QA slots are filled independently.
 
-All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing.
+All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing. The scheduler also fires immediately after every `work_finish` (as a tick), so transitions happen without waiting for the next interval.
 
-### Auto-chaining
+### How tasks flow between roles
 
-When enabled, task completions automatically trigger the next step:
+When a worker calls `work_finish`, the plugin transitions the label. The scheduler picks up the rest:
 
-- **DEV "done"** → QA reviewer is dispatched immediately
-- **QA "fail"** → DEV is re-dispatched at the same level that originally worked on it
-- **QA "pass"** → issue closes, pipeline done
-- **"blocked"** → task returns to queue for retry, no chaining
+- **DEV "done"** → label moves to `To Test` → next tick dispatches QA
+- **QA "fail"** → label moves to `To Improve` → next tick dispatches DEV (reuses previous level)
+- **QA "pass"** → label moves to `Done`, issue closes
+- **"blocked"** → label reverts to queue (`To Do` or `To Test`) for retry
 
-No orchestrator involvement. The worker calls `work_finish`, the plugin handles the rest.
+No orchestrator involvement. Workers self-report, the scheduler fills free slots.
 
 ### Execution modes
 
@@ -251,7 +251,6 @@ Per-project settings live in `projects.json`:
 {
   "-1234567890": {
     "name": "my-app",
-    "autoChain": true,
     "roleExecution": "parallel"
   }
 }
@@ -263,7 +262,6 @@ Per-project settings live in `projects.json`:
 | `work_heartbeat.intervalSeconds` | `openclaw.json` | `60` | Seconds between ticks |
 | `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4` | Max workers dispatched per tick |
 | `projectExecution` | `openclaw.json` | `"parallel"` | All projects at once, or one at a time |
-| `autoChain` | `projects.json` | `false` | Auto-dispatch next step on completion |
 | `roleExecution` | `projects.json` | `"parallel"` | DEV+QA at once, or one role at a time |
 
 See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
@@ -367,7 +365,7 @@ DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers 
 | Tool | What it does |
 |---|---|
 | `work_start` | Pick up a task — resolves level, transitions label, dispatches session, logs audit |
-| `work_finish` | Complete a task — transitions label, updates state, auto-chains next step, ticks queue |
+| `work_finish` | Complete a task — transitions label, updates state, ticks queue for next dispatch |
 | `task_create` | Create a new issue (used by workers to file bugs they discover) |
 | `task_update` | Manually change an issue's state label |
 | `task_comment` | Add a comment to an issue (with role attribution) |

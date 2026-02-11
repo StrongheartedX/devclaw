@@ -29,9 +29,9 @@ Classical management theory — later formalized by Bernard Bass in his work on 
 
 DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `work_start`, then steps away. It only re-engages in three scenarios:
 
-1. **DEV completes work** → The task moves to QA automatically. No orchestrator involvement needed.
+1. **DEV completes work** → The label moves to `To Test`. The scheduler dispatches QA on the next tick. No orchestrator involvement needed.
 2. **QA passes** → The issue closes. Pipeline complete.
-3. **QA fails** → The task cycles back to DEV with a fix request. The orchestrator may need to adjust the model level.
+3. **QA fails** → The label moves to `To Improve`. The scheduler dispatches DEV on the next tick. The orchestrator may need to adjust the model level.
 4. **QA refines** → The task enters a holding state that _requires human decision_. This is the explicit escalation boundary.
 
 The "refine" state is the most interesting from a delegation perspective. It's a conscious architectural decision that says: some judgments should not be automated. When the QA agent determines that a task needs rethinking rather than just fixing, it escalates to the only actor who has the full business context — the human.

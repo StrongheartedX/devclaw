@@ -90,7 +90,7 @@ Complete a task with a result. Called by workers (DEV/QA sub-agent sessions) dir
 6. Ticks queue to fill free worker slots
 7. Writes audit log
 
-**Auto-chaining** (when enabled on the project): `dev:done` dispatches QA automatically. `qa:fail` re-dispatches DEV using the previous level.
+**Scheduling:** After completion, `work_finish` ticks the queue. The scheduler sees the new label (`To Test` or `To Improve`) and dispatches the next worker if a slot is free.
 
 ---
 

@@ -30,7 +30,7 @@ Roles become a configurable list instead of a hardcoded pair. Each role defines:
 }
 ```
 
-The pipeline definition replaces the hardcoded `Doing → To Test → Testing → Done` flow. Labels and transitions are generated from the pipeline config. Auto-chaining follows the pipeline order.
+The pipeline definition replaces the hardcoded `Doing → To Test → Testing → Done` flow. Labels and transitions are generated from the pipeline config. The scheduler follows the pipeline order when filling free slots.
 
 ### Open questions
 

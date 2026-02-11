@@ -244,7 +244,7 @@ Change which model powers each level in `openclaw.json` — see [Configuration](
 | Developer assignment | Plugin | LLM-selected level by orchestrator, keyword heuristic fallback |
 | State management | Plugin | Atomic read/write to `projects.json` |
 | Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
-| Task completion | Plugin (`work_finish`) | Workers self-report. Auto-chains if enabled. |
+| Task completion | Plugin (`work_finish`) | Workers self-report. Scheduler dispatches next role. |
 | Prompt instructions | Plugin (`work_start`) | Loaded from `projects/roles/<project>/<role>.md`, appended to task message |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `health` checks active vs alive |
