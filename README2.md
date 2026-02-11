@@ -50,43 +50,27 @@ Multiple issues shipped, a QA failure automatically retried, and a second projec
 
 ### Autonomous multi-project development
 
-Every project runs in [complete isolation](#execution-modes) with its own queue, workers, and sessions. DEV and QA [execute in parallel](#execution-modes) within each project, and [multiple projects run simultaneously](#execution-modes). The [scheduling engine](#automatic-scheduling) ties it together: a token-free `work_heartbeat` continuously scans queues, dispatches workers, and drives [DEV → QA → DEV feedback loops](#how-tasks-flow-between-roles) — no human in the loop. Workers receive [custom instructions per project per role](#custom-instructions-per-project) at dispatch time: test commands, coding standards, deployment steps.
+Each project is fully isolated — own queue, workers, sessions, and state. DEV and QA execute in parallel within each project, and multiple projects run simultaneously. A token-free scheduling engine drives it all autonomously:
 
-```
-┌─ work_heartbeat ─────────────────┐
-│  health → queue → dispatch       │
-│  every 60s · zero LLM tokens     │
-└──────────┬───────────────────────┘
-           │
-     ┌─────▼─────────────────────┐
-     │  My Webapp                │
-     │                           │
-     │  DEV (medior) ──▶ QA      │
-     │   #43              #42    │
-     │                           │
-     │  dev.md · qa.md           │
-     └───────────────────────────┘
-           │
-     ┌─────▼─────────────────────┐
-     │  My API                   │
-     │                           │
-     │  DEV (senior) ──▶ QA      │
-     │   #19              #18    │
-     │                           │
-     │  dev.md · qa.md           │
-     └───────────────────────────┘
-
-     each project fully isolated:
-     own queue · own workers · own sessions
-```
+- **[Scheduling engine](#automatic-scheduling)** — `work_heartbeat` continuously scans queues, dispatches workers, and drives DEV → QA → DEV [feedback loops](#how-tasks-flow-between-roles)
+- **[Project isolation](#execution-modes)** — parallel workers per project, parallel projects across the system
+- **[Role instructions](#custom-instructions-per-project)** — per-project, per-role prompts injected at dispatch time
 
 ### Process enforcement
 
-Task state lives in your [existing issue tracker](#your-issues-stay-in-your-tracker) — GitHub or GitLab issues — as the single source of truth. Every tool call is an [atomic operation with rollback](#what-atomic-means-here): label transitions, state updates, session dispatch, and audit logging happen in deterministic code. The agent says what to do; [11 tools enforce how it gets done](#the-toolbox).
+GitHub/GitLab issues are the single source of truth — not an internal database. Every tool call wraps the full operation into deterministic code with rollback on failure:
+
+- **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
+- **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
+- **[Tool-based guardrails](#the-toolbox)** — 11 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
 ### ~60-80% token savings
 
-[Tier selection](#meet-your-team) routes tasks to the cheapest model that can handle them — Haiku for typos, Opus for architecture (~30-50% on simple tasks). [Session reuse](#sessions-accumulate-context) preserves accumulated codebase knowledge across tasks (~40-60% per task). The [scheduling engine](#automatic-scheduling) runs on pure CLI calls — zero LLM tokens for orchestration.
+Three mechanisms compound to cut token usage dramatically versus running one large model with fresh context each time:
+
+- **[Tier selection](#meet-your-team)** — Haiku for typos, Sonnet for features, Opus for architecture (~30-50% on simple tasks)
+- **[Session reuse](#sessions-accumulate-context)** — workers accumulate codebase knowledge across tasks (~40-60% per task)
+- **[Token-free scheduling](#automatic-scheduling)** — `work_heartbeat` runs on pure CLI calls, zero LLM tokens for orchestration
 
 ---
 
