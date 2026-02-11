@@ -15,35 +15,35 @@ This works for the common case but breaks down when you want:
 
 Roles become a configurable list instead of a hardcoded pair. Each role defines:
 - **Name** — e.g. `design`, `dev`, `qa`, `devops`
-- **Tiers** — which developer tiers can be assigned (e.g. design only needs `medior`)
+- **Levels** — which developer levels can be assigned (e.g. design only needs `medior`)
 - **Pipeline position** — where it sits in the task lifecycle
 - **Worker count** — how many concurrent workers (default: 1)
 
 ```json
 {
   "roles": {
-    "dev": { "tiers": ["junior", "medior", "senior"], "workers": 1 },
-    "qa": { "tiers": ["qa"], "workers": 1 },
-    "devops": { "tiers": ["medior", "senior"], "workers": 1 }
+    "dev": { "levels": ["junior", "medior", "senior"], "workers": 1 },
+    "qa": { "levels": ["reviewer", "tester"], "workers": 1 },
+    "devops": { "levels": ["medior", "senior"], "workers": 1 }
   },
   "pipeline": ["dev", "qa", "devops"]
 }
 ```
 
-The pipeline definition replaces the hardcoded `Doing → To Test → Testing → Done` flow. Labels and transitions are generated from the pipeline config. Auto-chaining follows the pipeline order.
+The pipeline definition replaces the hardcoded `Doing → To Test → Testing → Done` flow. Labels and transitions are generated from the pipeline config. The scheduler follows the pipeline order when filling free slots.
 
 ### Open questions
 
 - How do custom labels map? Generate from role names, or let users define?
-- Should roles have their own instruction files (`projects/prompts/<project>/<role>.md`) — yes, this already works
+- Should roles have their own instruction files (`projects/roles/<project>/<role>.md`) — yes, this already works
 - How to handle parallel roles (e.g. frontend + backend DEV in parallel before QA)?
 
 ---
 
-## Channel-agnostic groups
+## Channel-agnostic Groups
 
 Currently DevClaw maps projects to **Telegram group IDs**. The `projectGroupId` is a Telegram-specific negative number. This means:
-- WhatsApp groups can't be used as project channels
+- WhatsApp groups can't be used as project channels (partially supported now via `channel` field)
 - Discord, Slack, or other channels are excluded
 - The naming (`groupId`, `groupName`) is Telegram-specific
 
@@ -77,19 +77,20 @@ Key changes:
 - All tool params, state keys, and docs updated accordingly
 - Backward compatible: existing Telegram-only keys migrated on read
 
-This enables any OpenClaw channel (Telegram, WhatsApp, Discord, Slack, etc.) to host a project — each group chat becomes an autonomous dev team regardless of platform.
+This enables any OpenClaw channel (Telegram, WhatsApp, Discord, Slack, etc.) to host a project.
 
 ### Open questions
 
 - Should one project be bindable to multiple channels? (e.g. Telegram for devs, WhatsApp for stakeholder updates)
-- How does the orchestrator agent handle cross-channel context? (OpenClaw bindings already route by channel)
+- How does the orchestrator agent handle cross-channel context?
 
 ---
 
-## Other ideas
+## Other Ideas
 
 - **Jira provider** — `IssueProvider` interface already abstracts GitHub/GitLab; Jira is the obvious next addition
-- **Deployment integration** — `task_complete` QA pass could trigger a deploy step via webhook or CLI
-- **Cost tracking** — log token usage per task/tier, surface in `queue_status`
+- **Deployment integration** — `work_finish` QA pass could trigger a deploy step via webhook or CLI
+- **Cost tracking** — log token usage per task/level, surface in `status`
 - **Priority scoring** — automatic priority assignment based on labels, age, and dependencies
 - **Session archival** — auto-archive idle sessions after configurable timeout (currently indefinite)
+- **Progressive delegation** — track QA pass rates per level and auto-promote (see [Management Theory](MANAGEMENT.md))

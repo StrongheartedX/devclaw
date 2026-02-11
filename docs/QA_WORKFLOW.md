@@ -1,8 +1,6 @@
-# QA Workflow
+# DevClaw — QA Workflow
 
-## Overview
-
-Quality Assurance (QA) in DevClaw follows a structured workflow that ensures every review is documented and traceable.
+Quality Assurance in DevClaw follows a structured workflow that ensures every review is documented and traceable.
 
 ## Required Steps
 
@@ -28,10 +26,10 @@ task_comment({
 
 ### 3. Complete the Task
 
-After posting your comment, call `task_complete`:
+After posting your comment, call `work_finish`:
 
 ```javascript
-task_complete({
+work_finish({
   role: "qa",
   projectGroupId: "<group-id>",
   result: "pass",  // or "fail", "refine", "blocked"
@@ -39,15 +37,24 @@ task_complete({
 })
 ```
 
+## QA Results
+
+| Result | Label transition | Meaning |
+|---|---|---|
+| `"pass"` | Testing → Done | Approved. Issue closed. |
+| `"fail"` | Testing → To Improve | Issues found. Issue reopened, sent back to DEV. |
+| `"refine"` | Testing → Refining | Needs human decision. Pipeline pauses. |
+| `"blocked"` | Testing → To Test | Cannot complete (env issues, etc.). Returns to QA queue. |
+
 ## Why Comments Are Required
 
-1. **Audit Trail**: Every review decision is documented
-2. **Knowledge Sharing**: Future reviewers understand what was tested
-3. **Quality Metrics**: Enables tracking of test coverage
-4. **Debugging**: When issues arise later, we know what was checked
-5. **Compliance**: Some projects require documented QA evidence
+1. **Audit Trail** — Every review decision is documented in the issue tracker
+2. **Knowledge Sharing** — Future reviewers understand what was tested
+3. **Quality Metrics** — Enables tracking of test coverage
+4. **Debugging** — When issues arise later, we know what was checked
+5. **Compliance** — Some projects require documented QA evidence
 
-## Comment Template
+## Comment Templates
 
 ### For Passing Reviews
 
@@ -61,7 +68,7 @@ task_complete({
 
 **Results:** All tests passed. No regressions found.
 
-**Environment:** 
+**Environment:**
 - Browser/Platform: [details]
 - Version: [details]
 - Test data: [if relevant]
@@ -72,15 +79,14 @@ task_complete({
 ### For Failing Reviews
 
 ```markdown
-## QA Review - Issues Found
+## QA Review — Issues Found
 
 **Tested:**
 - [What you tested]
 
 **Issues Found:**
 1. [Issue description with steps to reproduce]
-2. [Issue description with steps to reproduce]
-3. [Issue description with expected vs actual behavior]
+2. [Issue description with expected vs actual behavior]
 
 **Environment:**
 - [Test environment details]
@@ -90,25 +96,25 @@ task_complete({
 
 ## Enforcement
 
-As of [current date], QA workers are instructed via role templates to:
-- Always call `task_comment` BEFORE `task_complete`
+QA workers receive instructions via role templates to:
+- Always call `task_comment` BEFORE `work_finish`
 - Include specific details about what was tested
 - Document results, environment, and any notes
 
 Prompt templates affected:
-- `projects/prompts/<project>/qa.md`
+- `projects/roles/<project>/qa.md`
 - All project-specific QA templates should follow this pattern
 
 ## Best Practices
 
-1. **Be Specific**: Don't just say "tested the feature" - list what you tested
-2. **Include Environment**: Version numbers, browser, OS can matter
-3. **Document Edge Cases**: If you tested special scenarios, note them
-4. **Use Screenshots**: For UI issues, screenshots help (link in comment)
-5. **Reference Requirements**: Link back to acceptance criteria from the issue
+1. **Be Specific** — Don't just say "tested the feature" — list what you tested
+2. **Include Environment** — Version numbers, browser, OS can matter
+3. **Document Edge Cases** — If you tested special scenarios, note them
+4. **Reference Requirements** — Link back to acceptance criteria from the issue
+5. **Use Screenshots** — For UI issues, screenshots help (link in comment)
 
 ## Related
 
-- Issue #103: Enforce QA comment on every review (pass or fail)
-- Tool: `task_comment` - Add comments to issues
-- Tool: `task_complete` - Complete QA tasks
+- Tool: [`task_comment`](TOOLS.md#task_comment) — Add comments to issues
+- Tool: [`work_finish`](TOOLS.md#work_finish) — Complete QA tasks
+- Config: [`projects/roles/<project>/qa.md`](CONFIGURATION.md#role-instruction-files) — QA role instructions
