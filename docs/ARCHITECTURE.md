@@ -1,5 +1,57 @@
 # DevClaw — Architecture & Component Interaction
 
+## How it works
+
+One OpenClaw agent process serves multiple group chats — each group gives it a different project context. The orchestrator role, the workers, the task queue, and all state are fully isolated per group.
+
+```mermaid
+graph TB
+    subgraph "Group Chat A"
+        direction TB
+        A_O["Orchestrator"]
+        A_GL[GitHub/GitLab Issues]
+        A_DEV["DEV (worker session)"]
+        A_QA["QA (worker session)"]
+        A_O -->|work_start| A_GL
+        A_O -->|dispatches| A_DEV
+        A_O -->|dispatches| A_QA
+    end
+
+    subgraph "Group Chat B"
+        direction TB
+        B_O["Orchestrator"]
+        B_GL[GitHub/GitLab Issues]
+        B_DEV["DEV (worker session)"]
+        B_QA["QA (worker session)"]
+        B_O -->|work_start| B_GL
+        B_O -->|dispatches| B_DEV
+        B_O -->|dispatches| B_QA
+    end
+
+    AGENT["Single OpenClaw Agent"]
+    AGENT --- A_O
+    AGENT --- B_O
+```
+
+Worker sessions are expensive to start — each new spawn reads the full codebase (~50K tokens). DevClaw maintains **separate sessions per level per role** ([session-per-level design](#session-per-level-design)). When a medior dev finishes task A and picks up task B on the same project, the accumulated context carries over — no re-reading the repo. The plugin handles all session dispatch internally via OpenClaw CLI; the orchestrator agent never calls `sessions_spawn` or `sessions_send`.
+
+```mermaid
+sequenceDiagram
+    participant O as Orchestrator
+    participant DC as DevClaw Plugin
+    participant IT as Issue Tracker
+    participant S as Worker Session
+
+    O->>DC: work_start({ issueId: 42, role: "dev" })
+    DC->>IT: Fetch issue, verify label
+    DC->>DC: Assign level (junior/medior/senior)
+    DC->>DC: Check existing session for assigned level
+    DC->>IT: Transition label (To Do → Doing)
+    DC->>S: Dispatch task via CLI (create or reuse session)
+    DC->>DC: Update projects.json, write audit log
+    DC-->>O: { success: true, announcement: "..." }
+```
+
 ## Agents vs Sessions
 
 Understanding the OpenClaw model is key to understanding how DevClaw works:
