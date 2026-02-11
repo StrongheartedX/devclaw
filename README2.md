@@ -38,17 +38,24 @@ Agent:  "⚡ Sending DEV (medior) for #19: Add rate limiting to /api/search"
 
 Three issues shipped, one sent back for a fix (and auto-retried), another project's migration completed — all while you slept. The heartbeat scanned the queues, dispatched workers, chained DEV into QA, and chained QA failures back to DEV. No human in the loop.
 
-You can also drive it manually:
+You can also plan and steer in the same chat — the orchestrator is right there:
 
 ```
 You:    "Check the queue"
 Agent:  "2 issues in To Do. DEV is idle. QA is idle."
 
-You:    "Pick up #44 for DEV"
+You:    "We need to refactor the profile page before we add settings.
+         Create an issue for that, mark it as To Do, and pick it up."
+Agent:  creates #44 "Refactor user profile page" with label "To Do"
 Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
+
+You:    "Also create an issue for adding the settings page.
+         Keep it in Planning until #44 is done."
+Agent:  creates #45 "Add settings page" with label "Planning"
+Agent:  "Parked in Planning. I'll move it to To Do once #44 ships."
 ```
 
-Same agent, as many groups as you want, fully isolated teams per project.
+Same group chat for planning, prioritizing, and execution. Same agent, as many groups as you want, fully isolated teams per project.
 
 ---
 
