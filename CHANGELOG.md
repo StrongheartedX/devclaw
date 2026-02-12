@@ -45,6 +45,7 @@ This is the first stable release of DevClaw, a plugin for [OpenClaw](https://ope
 - **Comprehensive documentation** — Architecture, tools reference, configuration guide, QA workflow, and more
 
 #### Fixed
+- **TypeScript build configuration** — Fixed module resolution for proper openclaw plugin-sdk type imports
 - **Worker health monitoring** — Detects and recovers from crashed or stale worker sessions
 - **Label transition atomicity** — Clean state management prevents orphaned labels
 - **Session persistence** — Workers properly maintain context between tasks
