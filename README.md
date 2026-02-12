@@ -6,11 +6,20 @@
 
 **Turn any group chat into a dev team that ships.**
 
-DevClaw is a plugin for [OpenClaw](https://openclaw.ai) that turns your orchestrator agent into a development manager. It hires developers, assigns tasks, reviews code, and keeps the pipeline moving — across as many projects as you have group chats. [Get started &rarr;](#getting-started)
+DevClaw is a plugin for [OpenClaw](https://openclaw.ai) that turns your orchestrator agent into a development manager. It hires developers, assigns tasks, reviews code, and keeps the pipeline moving — across as many projects as you have group chats.
+
+**Prerequisites:** [OpenClaw](https://openclaw.ai) must be installed and running.
 
 ```bash
 openclaw plugins install @laurentenhoor/devclaw
 ```
+
+Then start onboarding by chatting with your agent in any channel:
+```
+"Hey, can you help me set up DevClaw?"
+```
+
+[Read more on onboarding &rarr;](#getting-started)
 
 ---
 
@@ -384,6 +393,11 @@ openclaw plugins install @laurentenhoor/devclaw
 Or for local development:
 ```bash
 openclaw plugins install -l ./devclaw
+```
+
+Start onboarding:
+```bash
+openclaw chat "Help me set up DevClaw"
 ```
 
 ### Set up through conversation

@@ -38,12 +38,18 @@ export async function hasWorkspaceFiles(
 // ---------------------------------------------------------------------------
 
 function buildModelTable(pluginConfig?: Record<string, unknown>): string {
-  const cfg = (pluginConfig as { models?: { dev?: Record<string, string>; qa?: Record<string, string> } })?.models;
+  const cfg = (
+    pluginConfig as {
+      models?: { dev?: Record<string, string>; qa?: Record<string, string> };
+    }
+  )?.models;
   const lines: string[] = [];
   for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
     for (const [level, defaultModel] of Object.entries(levels)) {
       const model = cfg?.[role as "dev" | "qa"]?.[level] || defaultModel;
-      lines.push(`  - **${role} ${level}**: ${model} (default: ${defaultModel})`);
+      lines.push(
+        `  - **${role} ${level}**: ${model} (default: ${defaultModel})`,
+      );
     }
   }
   return lines.join("\n");
@@ -111,26 +117,29 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
      - If none selected, user can add bindings manually later via openclaw.json
 
 **Step 2: Model Configuration**
-⚠️ **IMPORTANT**: First check what models the user has access to! The defaults below are suggestions.
 
-Ask: "What models do you have access to in your OpenClaw configuration?"
-- Guide them to check their available models (router configuration, API keys, etc.)
-- If they have the default Claude models, great!
-- If not, help them map their available models to these levels:
+1. **Call \`autoconfigure_models\`** to automatically discover and assign models:
+   - Discovers all authenticated models in OpenClaw
+   - Uses AI to intelligently assign them to DevClaw roles
+   - Returns a ready-to-use model configuration
 
-**Suggested default level-to-model mapping:**
+2. **Handle the result**:
+   - If \`success: false\` and \`modelCount: 0\`:
+     - **BLOCK setup** - show the authentication instructions from the message
+     - **DO NOT proceed** - exit onboarding until user configures API keys
+   - If \`success: true\`:
+     - Present the model assignment table to the user
+     - Store the \`models\` object for Step 3
 
-| Role | Level | Default Model | Purpose |
-|------|-------|---------------|---------|
-${modelTable}
+3. **Optional: Prefer specific provider**
+   - If user wants only models from one provider (e.g., "only use Anthropic"):
+   - Call \`autoconfigure_models({ preferProvider: "anthropic" })\`
 
-**Model selection guidance:**
-- **junior/tester**: Fastest, cheapest models (Haiku-class, GPT-4-mini, etc.)
-- **medior/reviewer**: Balanced models (Sonnet-class, GPT-4, etc.)
-- **senior**: Most capable models (Opus-class, o1, etc.)
-
-Ask which levels they want to customize, and collect their actual model IDs.
-💡 **Tip**: Guide users to configure finer-grained mappings rather than accepting unsuitable defaults.
+4. **Confirm with user**
+   - Ask: "Does this look good, or would you like to customize any roles?"
+   - If approved → proceed to Step 3 with the \`models\` configuration
+   - If they want changes → ask which specific roles to modify
+   - If they want different provider → go back to step 3
 
 **Step 3: Run Setup**
 Call \`setup\` with the collected answers:

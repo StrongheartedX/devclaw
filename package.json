@@ -1,6 +1,6 @@
 {
   "name": "@laurentenhoor/devclaw",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Multi-project dev/qa pipeline orchestration for OpenClaw",
   "type": "module",
   "license": "MIT",
@@ -51,6 +51,7 @@
     "openclaw": ">=2026.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.8"
+    "@types/node": "^25.2.3",
+    "typescript": "^5.9.3"
   }
 }

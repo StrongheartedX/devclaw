@@ -112,9 +112,10 @@ export function createSetupTool(api: OpenClawPluginApi) {
         ...DEV_LEVELS.map((t) => `  dev.${t}: ${result.models.dev[t]}`),
         ...QA_LEVELS.map((t) => `  qa.${t}: ${result.models.qa[t]}`),
         "",
-        "Files:",
-        ...result.filesWritten.map((f) => `  ${f}`),
       );
+
+      lines.push("Files:", ...result.filesWritten.map((f) => `  ${f}`));
+
       if (result.warnings.length > 0)
         lines.push("", "Warnings:", ...result.warnings.map((w) => `  ${w}`));
       lines.push(
