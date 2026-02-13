@@ -22,17 +22,17 @@ export const COMPLETION_RULES: Record<string, CompletionRule> = {
   "qa:pass":     { from: "Testing", to: "Done",       closeIssue: true },
   "qa:fail":     { from: "Testing", to: "To Improve", reopenIssue: true },
   "qa:refine":   { from: "Testing", to: "Refining" },
-  "dev:blocked": { from: "Doing",   to: "To Do" },
-  "qa:blocked":  { from: "Testing", to: "To Test" },
+  "dev:blocked": { from: "Doing",   to: "Refining" },
+  "qa:blocked":  { from: "Testing", to: "Refining" },
 };
 
 export const NEXT_STATE: Record<string, string> = {
   "dev:done":    "QA queue",
-  "dev:blocked": "returned to queue",
+  "dev:blocked": "moved to Refining - needs human input",
   "qa:pass":     "Done!",
   "qa:fail":     "back to DEV",
   "qa:refine":   "awaiting human decision",
-  "qa:blocked":  "returned to QA queue",
+  "qa:blocked":  "moved to Refining - needs human input",
 };
 
 const EMOJI: Record<string, string> = {
