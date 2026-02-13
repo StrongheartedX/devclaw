@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { readProjects } from "../projects.js";
 import { log as auditLog } from "../audit.js";
-import { checkWorkerHealth, fetchGatewaySessions, type SessionLookup } from "./health.js";
+import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
 import { createProvider } from "../providers/index.js";
 
@@ -307,7 +307,8 @@ async function performHealthPass(
   let fixedCount = 0;
 
   for (const role of ["dev", "qa"] as const) {
-    const fixes = await checkWorkerHealth({
+    // Check worker health (session liveness, label consistency, etc)
+    const healthFixes = await checkWorkerHealth({
       workspaceDir,
       groupId,
       project,
@@ -316,7 +317,18 @@ async function performHealthPass(
       autoFix: true,
       provider,
     });
-    fixedCount += fixes.filter((f) => f.fixed).length;
+    fixedCount += healthFixes.filter((f) => f.fixed).length;
+
+    // Scan for orphaned labels (active labels with no tracking worker)
+    const orphanFixes = await scanOrphanedLabels({
+      workspaceDir,
+      groupId,
+      project,
+      role,
+      autoFix: true,
+      provider,
+    });
+    fixedCount += orphanFixes.filter((f) => f.fixed).length;
   }
 
   return fixedCount;

@@ -43,7 +43,8 @@ export type HealthIssue = {
     | "stale_worker"         // Case 3: active for >2h
     | "stuck_label"          // Case 4: inactive but issue still has active label
     | "orphan_issue_id"      // Case 5: inactive but issueId set
-    | "issue_gone";          // Case 6: active but issue deleted/closed
+    | "issue_gone"           // Case 6: active but issue deleted/closed
+    | "orphaned_label";      // Case 7: active label but no worker tracking it
   severity: "critical" | "warning";
   project: string;
   groupId: string;
@@ -392,6 +393,91 @@ export async function checkWorkerHealth(opts: {
       fix.fixed = true;
     }
     fixes.push(fix);
+  }
+
+  return fixes;
+}
+
+// ---------------------------------------------------------------------------
+// Orphaned label scan
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan for issues with active labels (Doing, Testing) that are NOT tracked
+ * in projects.json. This catches cases where:
+ * - Worker crashed and state was cleared (issueId: null)
+ * - Label was set externally
+ * - State corruption
+ *
+ * Returns fixes for all orphaned labels found.
+ */
+export async function scanOrphanedLabels(opts: {
+  workspaceDir: string;
+  groupId: string;
+  project: Project;
+  role: Role;
+  autoFix: boolean;
+  provider: IssueProvider;
+  /** Workflow config (defaults to DEFAULT_WORKFLOW) */
+  workflow?: WorkflowConfig;
+}): Promise<HealthFix[]> {
+  const {
+    workspaceDir, groupId, project, role, autoFix, provider,
+    workflow = DEFAULT_WORKFLOW,
+  } = opts;
+
+  const fixes: HealthFix[] = [];
+  const worker = getWorker(project, role);
+
+  // Get labels from workflow config
+  const activeLabel = getActiveLabel(workflow, role);
+  const queueLabel = getRevertLabel(workflow, role);
+
+  // Fetch all issues with the active label
+  let issuesWithLabel: Issue[];
+  try {
+    issuesWithLabel = await provider.listIssuesByLabel(activeLabel);
+  } catch {
+    // Provider error (timeout, network, etc) — skip this scan
+    return fixes;
+  }
+
+  // Check each issue to see if it's tracked in worker state
+  for (const issue of issuesWithLabel) {
+    const issueIdStr = String(issue.iid);
+
+    // Check if this issue is tracked
+    const isTracked = worker.active && worker.issueId === issueIdStr;
+
+    if (!isTracked) {
+      // Orphaned label: issue has active label but no worker tracking it
+      const fix: HealthFix = {
+        issue: {
+          type: "orphaned_label",
+          severity: "critical",
+          project: project.name,
+          groupId,
+          role,
+          issueId: issueIdStr,
+          expectedLabel: queueLabel,
+          actualLabel: activeLabel,
+          message: `Issue #${issue.iid} has "${activeLabel}" label but no ${role.toUpperCase()} worker is tracking it`,
+        },
+        fixed: false,
+      };
+
+      if (autoFix) {
+        try {
+          await provider.transitionLabel(issue.iid, activeLabel, queueLabel);
+          fix.fixed = true;
+          fix.labelReverted = `${activeLabel} → ${queueLabel}`;
+        } catch {
+          fix.labelRevertFailed = true;
+        }
+      }
+
+      fixes.push(fix);
+    }
   }
 
   return fixes;
