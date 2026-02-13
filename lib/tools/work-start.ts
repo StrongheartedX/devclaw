@@ -15,6 +15,7 @@ import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectLevelFromLabels } from "../services/tick.js";
 import { isDevLevel } from "../tiers.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
+import { DEFAULT_WORKFLOW, getActiveLabel } from "../workflow.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -43,6 +44,9 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider } = await resolveProvider(project);
 
+      // TODO: Load per-project workflow when supported
+      const workflow = DEFAULT_WORKFLOW;
+
       // Find issue
       let issue: { iid: number; title: string; description: string; labels: string[]; web_url: string; state: string };
       let currentLabel: StateLabel;
@@ -52,14 +56,14 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (!label) throw new Error(`Issue #${issueIdParam} has no recognized state label`);
         currentLabel = label;
       } else {
-        const next = await findNextIssue(provider, roleParam);
+        const next = await findNextIssue(provider, roleParam, workflow);
         if (!next) return jsonResult({ success: false, error: `No issues available. Queue is empty.` });
         issue = next.issue;
         currentLabel = next.label;
       }
 
       // Detect role
-      const detectedRole = detectRoleFromLabel(currentLabel);
+      const detectedRole = detectRoleFromLabel(currentLabel, workflow);
       if (!detectedRole) throw new Error(`Label "${currentLabel}" doesn't map to a role`);
       const role = roleParam ?? detectedRole;
       if (roleParam && roleParam !== detectedRole) throw new Error(`Role mismatch: "${currentLabel}" → ${detectedRole}, requested ${roleParam}`);
@@ -72,8 +76,10 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         if (getWorker(project, other).active) throw new Error(`Sequential roleExecution: ${other.toUpperCase()} is active`);
       }
 
+      // Get target label from workflow
+      const targetLabel = getActiveLabel(workflow, role);
+
       // Select level
-      const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
       let selectedLevel: string, levelReason: string, levelSource: string;
       if (levelParam) {
         selectedLevel = levelParam; levelReason = "LLM-selected"; levelSource = "llm";

@@ -12,14 +12,38 @@ import { selectLevel } from "../model-selector.js";
 import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { DEV_LEVELS, QA_LEVELS, isDevLevel } from "../tiers.js";
+import {
+  DEFAULT_WORKFLOW,
+  getQueueLabels,
+  getAllQueueLabels,
+  getActiveLabel,
+  detectRoleFromLabel as workflowDetectRole,
+  type WorkflowConfig,
+  type Role,
+} from "../workflow.js";
 
 // ---------------------------------------------------------------------------
-// Shared constants + helpers (used by tick, work-start, auto-pickup)
+// Backward compatibility exports (deprecated)
 // ---------------------------------------------------------------------------
 
-export const DEV_LABELS: StateLabel[] = ["To Do", "To Improve"];
-export const QA_LABELS: StateLabel[] = ["To Test"];
-export const PRIORITY_ORDER: StateLabel[] = ["To Improve", "To Test", "To Do"];
+/**
+ * @deprecated Use getQueueLabels(workflow, "dev") instead.
+ */
+export const DEV_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "dev");
+
+/**
+ * @deprecated Use getQueueLabels(workflow, "qa") instead.
+ */
+export const QA_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "qa");
+
+/**
+ * @deprecated Use getAllQueueLabels(workflow) instead.
+ */
+export const PRIORITY_ORDER: StateLabel[] = getAllQueueLabels(DEFAULT_WORKFLOW);
+
+// ---------------------------------------------------------------------------
+// Shared helpers (used by tick, work-start, auto-pickup)
+// ---------------------------------------------------------------------------
 
 export function detectLevelFromLabels(labels: string[]): string | null {
   const lower = labels.map((l) => l.toLowerCase());
@@ -39,19 +63,22 @@ export function detectLevelFromLabels(labels: string[]): string | null {
   return all.find((l) => lower.includes(l)) ?? null;
 }
 
-export function detectRoleFromLabel(label: StateLabel): "dev" | "qa" | null {
-  if (DEV_LABELS.includes(label)) return "dev";
-  if (QA_LABELS.includes(label)) return "qa";
-  return null;
+/**
+ * Detect role from a label using workflow config.
+ */
+export function detectRoleFromLabel(
+  label: StateLabel,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+): Role | null {
+  return workflowDetectRole(workflow, label);
 }
 
 export async function findNextIssueForRole(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
-  role: "dev" | "qa",
+  role: Role,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
-  const labels = role === "dev"
-    ? PRIORITY_ORDER.filter((l) => DEV_LABELS.includes(l))
-    : PRIORITY_ORDER.filter((l) => QA_LABELS.includes(l));
+  const labels = getQueueLabels(workflow, role);
   for (const label of labels) {
     try {
       const issues = await provider.listIssuesByLabel(label);
@@ -66,11 +93,13 @@ export async function findNextIssueForRole(
  */
 export async function findNextIssue(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
-  role?: "dev" | "qa",
+  role?: Role,
+  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
-  const labels = role === "dev" ? PRIORITY_ORDER.filter((l) => DEV_LABELS.includes(l))
-    : role === "qa" ? PRIORITY_ORDER.filter((l) => QA_LABELS.includes(l))
-    : PRIORITY_ORDER;
+  const labels = role
+    ? getQueueLabels(workflow, role)
+    : getAllQueueLabels(workflow);
+
   for (const label of labels) {
     try {
       const issues = await provider.listIssuesByLabel(label);
@@ -90,7 +119,7 @@ export type TickAction = {
   issueId: number;
   issueTitle: string;
   issueUrl: string;
-  role: "dev" | "qa";
+  role: Role;
   level: string;
   sessionAction: "spawn" | "send";
   announcement: string;
@@ -116,20 +145,26 @@ export async function projectTick(opts: {
   dryRun?: boolean;
   maxPickups?: number;
   /** Only attempt this role. Used by work_start to fill the other slot. */
-  targetRole?: "dev" | "qa";
+  targetRole?: Role;
   /** Optional provider override (for testing). Uses createProvider if omitted. */
   provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel" | "listComments">;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
   runtime?: PluginRuntime;
+  /** Workflow config (defaults to DEFAULT_WORKFLOW) */
+  workflow?: WorkflowConfig;
 }): Promise<TickResult> {
-  const { workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun, maxPickups, targetRole, runtime } = opts;
+  const {
+    workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun,
+    maxPickups, targetRole, runtime,
+    workflow = DEFAULT_WORKFLOW,
+  } = opts;
 
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
   const provider = opts.provider ?? (await createProvider({ repo: project.repo })).provider;
   const roleExecution = project.roleExecution ?? "parallel";
-  const roles: Array<"dev" | "qa"> = targetRole ? [targetRole] : ["dev", "qa"];
+  const roles: Role[] = targetRole ? [targetRole] : ["dev", "qa"];
 
   const pickups: TickAction[] = [];
   const skipped: TickResult["skipped"] = [];
@@ -155,11 +190,11 @@ export async function projectTick(opts: {
       continue;
     }
 
-    const next = await findNextIssueForRole(provider, role);
+    const next = await findNextIssueForRole(provider, role, workflow);
     if (!next) continue;
 
     const { issue, label: currentLabel } = next;
-    const targetLabel: StateLabel = role === "dev" ? "Doing" : "Testing";
+    const targetLabel = getActiveLabel(workflow, role);
 
     // Level selection: label → heuristic
     const selectedLevel = resolveLevelForIssue(issue, role);
@@ -206,7 +241,7 @@ export async function projectTick(opts: {
 /**
  * Determine the level for an issue based on labels, role overrides, and heuristic fallback.
  */
-function resolveLevelForIssue(issue: Issue, role: "dev" | "qa"): string {
+function resolveLevelForIssue(issue: Issue, role: Role): string {
   const labelLevel = detectLevelFromLabels(issue.labels);
   if (labelLevel) {
     // QA role but label specifies a dev level → heuristic picks the right QA level
