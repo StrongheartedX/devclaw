@@ -5,10 +5,15 @@ import {
   type IssueProvider,
   type Issue,
   type StateLabel,
-  STATE_LABELS,
-  LABEL_COLORS,
+  type IssueComment,
 } from "./provider.js";
 import { runCommand } from "../run-command.js";
+import {
+  DEFAULT_WORKFLOW,
+  getStateLabels,
+  getLabelColors,
+  type WorkflowConfig,
+} from "../workflow.js";
 
 type GhIssue = {
   number: number;
@@ -28,7 +33,12 @@ function toIssue(gh: GhIssue): Issue {
 
 export class GitHubProvider implements IssueProvider {
   private repoPath: string;
-  constructor(opts: { repoPath: string }) { this.repoPath = opts.repoPath; }
+  private workflow: WorkflowConfig;
+
+  constructor(opts: { repoPath: string; workflow?: WorkflowConfig }) {
+    this.repoPath = opts.repoPath;
+    this.workflow = opts.workflow ?? DEFAULT_WORKFLOW;
+  }
 
   private async gh(args: string[]): Promise<string> {
     const result = await runCommand(["gh", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
@@ -41,7 +51,11 @@ export class GitHubProvider implements IssueProvider {
   }
 
   async ensureAllStateLabels(): Promise<void> {
-    for (const label of STATE_LABELS) await this.ensureLabel(label, LABEL_COLORS[label]);
+    const labels = getStateLabels(this.workflow);
+    const colors = getLabelColors(this.workflow);
+    for (const label of labels) {
+      await this.ensureLabel(label, colors[label]);
+    }
   }
 
   async createIssue(title: string, description: string, label: StateLabel, assignees?: string[]): Promise<Issue> {
@@ -65,7 +79,7 @@ export class GitHubProvider implements IssueProvider {
     return toIssue(JSON.parse(raw) as GhIssue);
   }
 
-  async listComments(issueId: number): Promise<import("./provider.js").IssueComment[]> {
+  async listComments(issueId: number): Promise<IssueComment[]> {
     try {
       const raw = await this.gh(["api", `repos/:owner/:repo/issues/${issueId}/comments`, "--jq", ".[] | {author: .user.login, body: .body, created_at: .created_at}"]);
       if (!raw) return [];
@@ -75,9 +89,10 @@ export class GitHubProvider implements IssueProvider {
 
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
     const issue = await this.getIssue(issueId);
-    const stateLabels = issue.labels.filter((l) => STATE_LABELS.includes(l as StateLabel));
+    const stateLabels = getStateLabels(this.workflow);
+    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l));
     const args = ["issue", "edit", String(issueId)];
-    for (const l of stateLabels) args.push("--remove-label", l);
+    for (const l of currentStateLabels) args.push("--remove-label", l);
     args.push("--add-label", to);
     await this.gh(args);
   }
@@ -86,8 +101,10 @@ export class GitHubProvider implements IssueProvider {
   async reopenIssue(issueId: number): Promise<void> { await this.gh(["issue", "reopen", String(issueId)]); }
 
   hasStateLabel(issue: Issue, expected: StateLabel): boolean { return issue.labels.includes(expected); }
+
   getCurrentStateLabel(issue: Issue): StateLabel | null {
-    return STATE_LABELS.find((l) => issue.labels.includes(l)) ?? null;
+    const stateLabels = getStateLabels(this.workflow);
+    return stateLabels.find((l) => issue.labels.includes(l)) ?? null;
   }
 
   async hasMergedMR(issueId: number): Promise<boolean> {

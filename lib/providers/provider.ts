@@ -2,18 +2,37 @@
  * IssueProvider — Abstract interface for issue tracker operations.
  *
  * Implementations: GitHub (gh CLI), GitLab (glab CLI).
+ *
+ * Note: STATE_LABELS and LABEL_COLORS are kept for backward compatibility
+ * but new code should use the workflow config via lib/workflow.ts.
  */
+import { DEFAULT_WORKFLOW, getStateLabels, getLabelColors } from "../workflow.js";
 
-export const STATE_LABELS = [
-  "Planning", "To Do", "Doing", "To Test", "Testing", "Done", "To Improve", "Refining",
-] as const;
+// ---------------------------------------------------------------------------
+// State labels — derived from default workflow for backward compatibility
+// ---------------------------------------------------------------------------
 
-export type StateLabel = (typeof STATE_LABELS)[number];
+/**
+ * @deprecated Use workflow.getStateLabels() instead.
+ * Kept for backward compatibility with existing code.
+ */
+export const STATE_LABELS = getStateLabels(DEFAULT_WORKFLOW) as readonly string[];
 
-export const LABEL_COLORS: Record<StateLabel, string> = {
-  Planning: "#95a5a6", "To Do": "#428bca", Doing: "#f0ad4e", "To Test": "#5bc0de",
-  Testing: "#9b59b6", Done: "#5cb85c", "To Improve": "#d9534f", Refining: "#f39c12",
-};
+/**
+ * StateLabel type — union of all valid state labels.
+ * This remains a string type for flexibility with custom workflows.
+ */
+export type StateLabel = string;
+
+/**
+ * @deprecated Use workflow.getLabelColors() instead.
+ * Kept for backward compatibility with existing code.
+ */
+export const LABEL_COLORS: Record<string, string> = getLabelColors(DEFAULT_WORKFLOW);
+
+// ---------------------------------------------------------------------------
+// Issue types
+// ---------------------------------------------------------------------------
 
 export type Issue = {
   iid: number;
@@ -29,6 +48,10 @@ export type IssueComment = {
   body: string;
   created_at: string;
 };
+
+// ---------------------------------------------------------------------------
+// Provider interface
+// ---------------------------------------------------------------------------
 
 export interface IssueProvider {
   ensureLabel(name: string, color: string): Promise<void>;

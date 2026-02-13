@@ -3,18 +3,18 @@
  *
  * Triangulates THREE sources of truth:
  *   1. projects.json — worker state (active, issueId, level, sessions)
- *   2. Issue label — current GitHub/GitLab label (Doing, Testing, To Do, etc.)
+ *   2. Issue label — current GitHub/GitLab label (from workflow config)
  *   3. Session state — whether the OpenClaw session exists via gateway status
  *
  * Detection matrix:
  *   | projects.json | Issue label       | Session      | Action                                    |
  *   |---------------|-------------------|--------------|-------------------------------------------|
- *   | active        | Doing/Testing ✅   | dead/missing | Deactivate worker, revert to To Do/To Test |
- *   | active        | NOT Doing/Testing | any          | Deactivate worker (moved externally)       |
- *   | active        | Doing/Testing ✅   | alive        | Healthy (flag if stale >2h)                |
- *   | inactive      | Doing/Testing     | any          | Revert issue to To Do/To Test (label stuck)|
- *   | inactive      | issueId set       | any          | Clear issueId (warning)                    |
- *   | active        | issue deleted     | any          | Deactivate worker, clear state             |
+ *   | active        | Active label ✅    | dead/missing | Deactivate worker, revert to queue        |
+ *   | active        | NOT Active label  | any          | Deactivate worker (moved externally)      |
+ *   | active        | Active label ✅    | alive        | Healthy (flag if stale >2h)               |
+ *   | inactive      | Active label      | any          | Revert issue to queue (label stuck)       |
+ *   | inactive      | issueId set       | any          | Clear issueId (warning)                   |
+ *   | active        | issue deleted     | any          | Deactivate worker, clear state            |
  */
 import type { StateLabel, IssueProvider, Issue } from "../providers/provider.js";
 import {
@@ -24,6 +24,13 @@ import {
   type Project,
 } from "../projects.js";
 import { runCommand } from "../run-command.js";
+import {
+  DEFAULT_WORKFLOW,
+  getActiveLabel,
+  getRevertLabel,
+  type WorkflowConfig,
+  type Role,
+} from "../workflow.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,15 +39,15 @@ import { runCommand } from "../run-command.js";
 export type HealthIssue = {
   type:
     | "session_dead"         // Case 1: active worker but session missing/dead
-    | "label_mismatch"       // Case 2: active worker but issue not in Doing/Testing
+    | "label_mismatch"       // Case 2: active worker but issue not in active label
     | "stale_worker"         // Case 3: active for >2h
-    | "stuck_label"          // Case 4: inactive but issue still has Doing/Testing
+    | "stuck_label"          // Case 4: inactive but issue still has active label
     | "orphan_issue_id"      // Case 5: inactive but issueId set
     | "issue_gone";          // Case 6: active but issue deleted/closed
   severity: "critical" | "warning";
   project: string;
   groupId: string;
-  role: "dev" | "qa";
+  role: Role;
   message: string;
   level?: string | null;
   sessionKey?: string | null;
@@ -130,38 +137,29 @@ async function fetchIssue(
 // Health check logic
 // ---------------------------------------------------------------------------
 
-/**
- * Expected in-progress labels for each role.
- */
-const ACTIVE_LABELS: Record<"dev" | "qa", StateLabel> = {
-  dev: "Doing",
-  qa: "Testing",
-};
-
-/**
- * Queue labels to revert to when clearing stuck state.
- */
-const QUEUE_LABELS: Record<"dev" | "qa", StateLabel> = {
-  dev: "To Do",
-  qa: "To Test",
-};
-
 export async function checkWorkerHealth(opts: {
   workspaceDir: string;
   groupId: string;
   project: Project;
-  role: "dev" | "qa";
+  role: Role;
   autoFix: boolean;
   provider: IssueProvider;
   sessions: SessionLookup;
+  /** Workflow config (defaults to DEFAULT_WORKFLOW) */
+  workflow?: WorkflowConfig;
 }): Promise<HealthFix[]> {
-  const { workspaceDir, groupId, project, role, autoFix, provider, sessions } = opts;
+  const {
+    workspaceDir, groupId, project, role, autoFix, provider, sessions,
+    workflow = DEFAULT_WORKFLOW,
+  } = opts;
+
   const fixes: HealthFix[] = [];
   const worker = getWorker(project, role);
   const sessionKey = worker.level ? getSessionForLevel(worker, worker.level) : null;
 
-  const expectedLabel = ACTIVE_LABELS[role];
-  const queueLabel = QUEUE_LABELS[role];
+  // Get labels from workflow config
+  const expectedLabel = getActiveLabel(workflow, role);
+  const queueLabel = getRevertLabel(workflow, role);
 
   // Parse issueId (may be comma-separated for batch, take first)
   const issueIdNum = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
@@ -339,7 +337,7 @@ export async function checkWorkerHealth(opts: {
   }
 
   // ---------------------------------------------------------------------------
-  // Case 4: Inactive but issue has stuck Doing/Testing label
+  // Case 4: Inactive but issue has stuck active label
   // ---------------------------------------------------------------------------
   if (!worker.active && issue && currentLabel === expectedLabel) {
     const fix: HealthFix = {

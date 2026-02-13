@@ -5,14 +5,24 @@ import {
   type IssueProvider,
   type Issue,
   type StateLabel,
-  STATE_LABELS,
-  LABEL_COLORS,
+  type IssueComment,
 } from "./provider.js";
 import { runCommand } from "../run-command.js";
+import {
+  DEFAULT_WORKFLOW,
+  getStateLabels,
+  getLabelColors,
+  type WorkflowConfig,
+} from "../workflow.js";
 
 export class GitLabProvider implements IssueProvider {
   private repoPath: string;
-  constructor(opts: { repoPath: string }) { this.repoPath = opts.repoPath; }
+  private workflow: WorkflowConfig;
+
+  constructor(opts: { repoPath: string; workflow?: WorkflowConfig }) {
+    this.repoPath = opts.repoPath;
+    this.workflow = opts.workflow ?? DEFAULT_WORKFLOW;
+  }
 
   private async glab(args: string[]): Promise<string> {
     const result = await runCommand(["glab", ...args], { timeoutMs: 30_000, cwd: this.repoPath });
@@ -25,7 +35,11 @@ export class GitLabProvider implements IssueProvider {
   }
 
   async ensureAllStateLabels(): Promise<void> {
-    for (const label of STATE_LABELS) await this.ensureLabel(label, LABEL_COLORS[label]);
+    const labels = getStateLabels(this.workflow);
+    const colors = getLabelColors(this.workflow);
+    for (const label of labels) {
+      await this.ensureLabel(label, colors[label]);
+    }
   }
 
   async createIssue(title: string, description: string, label: StateLabel, assignees?: string[]): Promise<Issue> {
@@ -52,7 +66,7 @@ export class GitLabProvider implements IssueProvider {
     return JSON.parse(raw) as Issue;
   }
 
-  async listComments(issueId: number): Promise<import("./provider.js").IssueComment[]> {
+  async listComments(issueId: number): Promise<IssueComment[]> {
     try {
       const raw = await this.glab(["api", `projects/:id/issues/${issueId}/notes`, "--paginate"]);
       const notes = JSON.parse(raw) as Array<{ author: { username: string }; body: string; created_at: string; system: boolean }>;
@@ -69,9 +83,10 @@ export class GitLabProvider implements IssueProvider {
 
   async transitionLabel(issueId: number, from: StateLabel, to: StateLabel): Promise<void> {
     const issue = await this.getIssue(issueId);
-    const stateLabels = issue.labels.filter((l) => STATE_LABELS.includes(l as StateLabel));
+    const stateLabels = getStateLabels(this.workflow);
+    const currentStateLabels = issue.labels.filter((l) => stateLabels.includes(l));
     const args = ["issue", "update", String(issueId)];
-    for (const l of stateLabels) args.push("--unlabel", l);
+    for (const l of currentStateLabels) args.push("--unlabel", l);
     args.push("--label", to);
     await this.glab(args);
   }
@@ -80,8 +95,10 @@ export class GitLabProvider implements IssueProvider {
   async reopenIssue(issueId: number): Promise<void> { await this.glab(["issue", "reopen", String(issueId)]); }
 
   hasStateLabel(issue: Issue, expected: StateLabel): boolean { return issue.labels.includes(expected); }
+
   getCurrentStateLabel(issue: Issue): StateLabel | null {
-    return STATE_LABELS.find((l) => issue.labels.includes(l)) ?? null;
+    const stateLabels = getStateLabels(this.workflow);
+    return stateLabels.find((l) => issue.labels.includes(l)) ?? null;
   }
 
   async hasMergedMR(issueId: number): Promise<boolean> {
