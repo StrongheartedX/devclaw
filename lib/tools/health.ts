@@ -69,14 +69,14 @@ export function createHealthTool() {
         fix,
         issuesFound: issues.length,
         issuesFixed: issues.filter((i) => i.fixed).length,
-        sessionsCached: sessions.size,
+        sessionsCached: sessions?.size ?? 0,
       });
 
       return jsonResult({
         success: true,
         fix,
         projectsScanned: projectIds.length,
-        sessionsQueried: sessions.size,
+        sessionsQueried: sessions?.size ?? 0,
         issues,
       });
     },
