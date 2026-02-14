@@ -25,8 +25,8 @@ export type DispatchOpts = {
   issueTitle: string;
   issueDescription: string;
   issueUrl: string;
-  role: "dev" | "qa";
-  /** Developer level (junior, medior, senior, reviewer) or raw model ID */
+  role: "dev" | "qa" | "architect";
+  /** Developer level (junior, medior, senior, reviewer, opus, sonnet) or raw model ID */
   level: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
   fromLabel: string;
@@ -63,7 +63,7 @@ export type DispatchResult = {
  */
 export function buildTaskMessage(opts: {
   projectName: string;
-  role: "dev" | "qa";
+  role: "dev" | "qa" | "architect";
   issueId: number;
   issueTitle: string;
   issueDescription: string;
@@ -79,7 +79,7 @@ export function buildTaskMessage(opts: {
   } = opts;
 
   const availableResults =
-    role === "dev"
+    role === "dev" || role === "architect"
       ? '"done" (completed successfully) or "blocked" (cannot complete, need help)'
       : '"pass" (approved), "fail" (issues found), "refine" (needs human input), or "blocked" (cannot complete)';
 
@@ -267,7 +267,7 @@ function sendToAgent(
 }
 
 async function recordWorkerState(
-  workspaceDir: string, groupId: string, role: "dev" | "qa",
+  workspaceDir: string, groupId: string, role: "dev" | "qa" | "architect",
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send" },
 ): Promise<void> {
   await activateWorker(workspaceDir, groupId, role, {
@@ -302,7 +302,7 @@ function buildAnnouncement(
   level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
 ): string {
-  const emoji = levelEmoji(role as "dev" | "qa", level) ?? (role === "qa" ? "🔍" : "🔧");
+  const emoji = levelEmoji(role as "dev" | "qa" | "architect", level) ?? (role === "qa" ? "🔍" : role === "architect" ? "🏗️" : "🔧");
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }

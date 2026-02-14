@@ -10,6 +10,7 @@ import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
+import { createDesignTaskTool } from "./lib/tools/design-task.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
@@ -42,6 +43,14 @@ const plugin = {
             properties: {
               reviewer: { type: "string" },
               tester: { type: "string" },
+            },
+          },
+          architect: {
+            type: "object",
+            description: "Architect tier models",
+            properties: {
+              opus: { type: "string" },
+              sonnet: { type: "string" },
             },
           },
         },
@@ -99,6 +108,9 @@ const plugin = {
     api.registerTool(createTaskUpdateTool(api), { names: ["task_update"] });
     api.registerTool(createTaskCommentTool(api), { names: ["task_comment"] });
 
+    // Architect
+    api.registerTool(createDesignTaskTool(api), { names: ["design_task"] });
+
     // Operations
     api.registerTool(createStatusTool(api), { names: ["status"] });
     api.registerTool(createHealthTool(), { names: ["health"] });
@@ -124,7 +136,7 @@ const plugin = {
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (11 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (12 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };

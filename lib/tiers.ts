@@ -7,10 +7,12 @@
 
 export const DEV_LEVELS = ["junior", "medior", "senior"] as const;
 export const QA_LEVELS = ["reviewer", "tester"] as const;
+export const ARCHITECT_LEVELS = ["opus", "sonnet"] as const;
 
 export type DevLevel = (typeof DEV_LEVELS)[number];
 export type QaLevel = (typeof QA_LEVELS)[number];
-export type Level = DevLevel | QaLevel;
+export type ArchitectLevel = (typeof ARCHITECT_LEVELS)[number];
+export type Level = DevLevel | QaLevel | ArchitectLevel;
 
 /** Default models, nested by role. */
 export const DEFAULT_MODELS = {
@@ -22,6 +24,10 @@ export const DEFAULT_MODELS = {
   qa: {
     reviewer: "anthropic/claude-sonnet-4-5",
     tester: "anthropic/claude-haiku-4-5",
+  },
+  architect: {
+    opus: "anthropic/claude-opus-4-5",
+    sonnet: "anthropic/claude-sonnet-4-5",
   },
 };
 
@@ -36,6 +42,10 @@ export const LEVEL_EMOJI = {
     reviewer: "🔍",
     tester: "👀",
   },
+  architect: {
+    opus: "🏗️",
+    sonnet: "📐",
+  },
 };
 
 /** Check if a level belongs to the dev role. */
@@ -48,20 +58,29 @@ export function isQaLevel(value: string): value is QaLevel {
   return (QA_LEVELS as readonly string[]).includes(value);
 }
 
+/** Check if a level belongs to the architect role. */
+export function isArchitectLevel(value: string): value is ArchitectLevel {
+  return (ARCHITECT_LEVELS as readonly string[]).includes(value);
+}
+
 /** Determine the role a level belongs to. */
-export function levelRole(level: string): "dev" | "qa" | undefined {
+export function levelRole(level: string): WorkerRole | undefined {
   if (isDevLevel(level)) return "dev";
   if (isQaLevel(level)) return "qa";
+  if (isArchitectLevel(level)) return "architect";
   return undefined;
 }
 
+/** All valid worker roles. */
+export type WorkerRole = "dev" | "qa" | "architect";
+
 /** Get the default model for a role + level. */
-export function defaultModel(role: "dev" | "qa", level: string): string | undefined {
+export function defaultModel(role: WorkerRole, level: string): string | undefined {
   return (DEFAULT_MODELS[role] as Record<string, string>)[level];
 }
 
 /** Get the emoji for a role + level. */
-export function levelEmoji(role: "dev" | "qa", level: string): string | undefined {
+export function levelEmoji(role: WorkerRole, level: string): string | undefined {
   return (LEVEL_EMOJI[role] as Record<string, string>)[level];
 }
 
@@ -74,7 +93,7 @@ export function levelEmoji(role: "dev" | "qa", level: string): string | undefine
  * 3. Passthrough (treat as raw model ID)
  */
 export function resolveModel(
-  role: "dev" | "qa",
+  role: WorkerRole,
   level: string,
   pluginConfig?: Record<string, unknown>,
 ): string {

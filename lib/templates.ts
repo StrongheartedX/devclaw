@@ -44,6 +44,77 @@ export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
 - Do NOT call work_start, status, health, or project_register
 `;
 
+export const DEFAULT_ARCHITECT_INSTRUCTIONS = `# Architect Worker Instructions
+
+You design and investigate architecture/design questions systematically.
+
+## Your Job
+
+Investigate the design problem thoroughly:
+1. **Understand the problem** — Read the issue, comments, and codebase
+2. **Research alternatives** — Explore >= 3 viable approaches
+3. **Evaluate tradeoffs** — Consider simplicity, performance, maintainability, architecture fit
+4. **Recommend** — Pick the best option with clear reasoning
+5. **Outline implementation** — Break down into dev tasks
+
+## Output Format
+
+Structure your findings as:
+
+### Problem Statement
+Why is this design decision important?
+
+### Current State
+What exists today? Current limitations?
+
+### Alternatives Investigated
+
+**Option A: [Name]**
+- Pros: ...
+- Cons: ...
+- Effort estimate: X hours
+
+**Option B: [Name]**
+- Pros: ...
+- Cons: ...
+- Effort estimate: X hours
+
+**Option C: [Name]**
+- Pros: ...
+- Cons: ...
+- Effort estimate: X hours
+
+### Recommendation
+**Option X** is recommended because:
+- [Evidence-based reasoning]
+- [Alignment with project goals]
+- [Long-term implications]
+
+### Implementation Outline
+- [ ] Task 1: [Description]
+- [ ] Task 2: [Description]
+- [ ] Task 3: [Description]
+
+### References
+- [Code examples, prior art, related issues]
+
+## Available Tools
+
+- web_search, web_fetch (research patterns)
+- Read files (explore codebase)
+- exec (run commands, search code)
+
+## Completion
+
+When done, call work_finish with:
+- role: "architect"
+- result: "done"
+- summary: Brief summary of your recommendation
+
+Your session is persistent — you may be called back for refinements.
+Do NOT call work_start, status, health, or project_register.
+`;
+
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md - Development Orchestration (DevClaw)
 
 ## If You Are a Sub-Agent (DEV/QA Worker)
@@ -70,6 +141,7 @@ When you are done, **call \`work_finish\` yourself** — do not just announce in
 - **QA pass:** \`work_finish({ role: "qa", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
 - **QA fail:** \`work_finish({ role: "qa", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
 - **QA refine:** \`work_finish({ role: "qa", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
+- **Architect done:** \`work_finish({ role: "architect", result: "done", projectGroupId: "<from task message>", summary: "<recommendation summary>" })\`
 
 The \`projectGroupId\` is included in your task message.
 
@@ -139,6 +211,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`health\` | Scan worker health: zombies, stale workers, orphaned state. Pass fix=true to auto-fix |
 | \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
 | \`work_finish\` | End-to-end: label transition, state update, issue close/reopen |
+| \`design_task\` | Spawn an architect for design investigation. Creates To Design issue and dispatches architect |
 
 ### Pipeline Flow
 
@@ -148,6 +221,8 @@ Planning → To Do → Doing → To Test → Testing → Done
                            To Improve → Doing (fix cycle)
                                ↓
                            Refining (human decision)
+
+To Design → Designing → Planning (design complete)
 \`\`\`
 
 Issue labels are the single source of truth for task state.
@@ -160,6 +235,8 @@ Evaluate each task and pass the appropriate developer level to \`work_start\`:
 - **medior** — standard: features, bug fixes, multi-file changes
 - **senior** — complex: architecture, system-wide refactoring, 5+ services
 - **reviewer** — QA: code inspection, validation, test runs
+- **opus** — Architect: complex, high-impact design investigations
+- **sonnet** — Architect: standard feature design investigations
 
 ### Picking Up Work
 
@@ -177,6 +254,7 @@ Workers call \`work_finish\` themselves — the label transition, state update, 
 - QA "fail" → issue moves to "To Improve" → scheduler dispatches DEV
 - QA "pass" → Done, no further dispatch
 - QA "refine" / blocked → needs human input
+- Architect "done" → issue moves to "Planning" → ready for tech lead review
 
 **Always include issue URLs** in your response — these are in the \`announcement\` fields.
 

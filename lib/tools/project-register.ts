@@ -14,8 +14,8 @@ import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
-import { DEV_LEVELS, QA_LEVELS } from "../tiers.js";
-import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS } from "../templates.js";
+import { DEV_LEVELS, QA_LEVELS, ARCHITECT_LEVELS } from "../tiers.js";
+import { DEFAULT_DEV_INSTRUCTIONS, DEFAULT_QA_INSTRUCTIONS, DEFAULT_ARCHITECT_INSTRUCTIONS } from "../templates.js";
 
 /**
  * Scaffold project-specific prompt files.
@@ -40,6 +40,14 @@ async function scaffoldPromptFiles(workspaceDir: string, projectName: string): P
     await fs.access(projectQa);
   } catch {
     await fs.writeFile(projectQa, DEFAULT_QA_INSTRUCTIONS, "utf-8");
+    created = true;
+  }
+
+  const projectArchitect = path.join(projectDir, "architect.md");
+  try {
+    await fs.access(projectArchitect);
+  } catch {
+    await fs.writeFile(projectArchitect, DEFAULT_ARCHITECT_INSTRUCTIONS, "utf-8");
     created = true;
   }
 
@@ -141,7 +149,7 @@ export function createProjectRegisterTool() {
         );
       }
 
-      // 4. Create all 8 state labels (idempotent)
+      // 4. Create all state labels (idempotent)
       await provider.ensureAllStateLabels();
 
       // 5. Add project to projects.json
@@ -156,6 +164,7 @@ export function createProjectRegisterTool() {
         roleExecution,
         dev: emptyWorkerState([...DEV_LEVELS]),
         qa: emptyWorkerState([...QA_LEVELS]),
+        architect: emptyWorkerState([...ARCHITECT_LEVELS]),
       };
 
       await writeProjects(workspaceDir, data);
@@ -184,7 +193,7 @@ export function createProjectRegisterTool() {
         repo,
         baseBranch,
         deployBranch,
-        labelsCreated: 8,
+        labelsCreated: 10,
         promptsScaffolded: promptsCreated,
         announcement,
       });

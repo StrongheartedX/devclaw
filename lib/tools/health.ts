@@ -51,7 +51,7 @@ export function createHealthTool() {
         if (!project) continue;
         const { provider } = await resolveProvider(project);
 
-        for (const role of ["dev", "qa"] as const) {
+        for (const role of ["dev", "qa", "architect"] as const) {
           // Worker health check (session liveness, label consistency, etc)
           const healthFixes = await checkWorkerHealth({
             workspaceDir,

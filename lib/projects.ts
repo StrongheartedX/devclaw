@@ -28,6 +28,7 @@ export type Project = {
   maxQaWorkers?: number;
   dev: WorkerState;
   qa: WorkerState;
+  architect: WorkerState;
 };
 
 export type ProjectsData = {
@@ -86,6 +87,9 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
     project.qa = project.qa
       ? parseWorkerState(project.qa as unknown as Record<string, unknown>)
       : emptyWorkerState([]);
+    project.architect = project.architect
+      ? parseWorkerState(project.architect as unknown as Record<string, unknown>)
+      : emptyWorkerState([]);
     if (!project.channel) {
       project.channel = "telegram";
     }
@@ -113,7 +117,7 @@ export function getProject(
 
 export function getWorker(
   project: Project,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
 ): WorkerState {
   return project[role];
 }
@@ -125,7 +129,7 @@ export function getWorker(
 export async function updateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
   updates: Partial<WorkerState>,
 ): Promise<ProjectsData> {
   const data = await readProjects(workspaceDir);
@@ -153,7 +157,7 @@ export async function updateWorker(
 export async function activateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
   params: {
     issueId: string;
     level: string;
@@ -183,7 +187,7 @@ export async function activateWorker(
 export async function deactivateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
 ): Promise<ProjectsData> {
   return updateWorker(workspaceDir, groupId, role, {
     active: false,

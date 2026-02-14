@@ -306,7 +306,7 @@ async function performHealthPass(
   const { provider } = await createProvider({ repo: project.repo });
   let fixedCount = 0;
 
-  for (const role of ["dev", "qa"] as const) {
+  for (const role of ["dev", "qa", "architect"] as const) {
     // Check worker health (session liveness, label consistency, etc)
     const healthFixes = await checkWorkerHealth({
       workspaceDir,

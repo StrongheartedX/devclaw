@@ -15,6 +15,10 @@ export type ModelAssignment = {
     reviewer: string;
     tester: string;
   };
+  architect: {
+    opus: string;
+    sonnet: string;
+  };
 };
 
 /**
@@ -34,6 +38,7 @@ export async function selectModelsWithLLM(
     return {
       dev: { junior: model, medior: model, senior: model },
       qa: { reviewer: model, tester: model },
+      architect: { opus: model, sonnet: model },
     };
   }
 
@@ -70,6 +75,10 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
   "qa": {
     "reviewer": "provider/model-name",
     "tester": "provider/model-name"
+  },
+  "architect": {
+    "opus": "provider/model-name",
+    "sonnet": "provider/model-name"
   }
 }`;
 
@@ -119,6 +128,14 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
     console.log("LLM returned:", JSON.stringify(assignment, null, 2));
 
     // Validate the structure
+    // Backfill architect if LLM didn't return it (graceful upgrade)
+    if (!assignment.architect) {
+      assignment.architect = {
+        opus: assignment.dev?.senior ?? availableModels[0].model,
+        sonnet: assignment.dev?.medior ?? availableModels[0].model,
+      };
+    }
+
     if (
       !assignment.dev?.junior ||
       !assignment.dev?.medior ||
