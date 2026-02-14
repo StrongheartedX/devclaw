@@ -51,12 +51,23 @@ const COMPLEX_KEYWORDS = [
 export function selectLevel(
   issueTitle: string,
   issueDescription: string,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
 ): LevelSelection {
   if (role === "qa") {
     return {
       level: "reviewer",
       reason: "Default QA level for code inspection and validation",
+    };
+  }
+
+  if (role === "architect") {
+    const text = `${issueTitle} ${issueDescription}`.toLowerCase();
+    const isComplex = COMPLEX_KEYWORDS.some((kw) => text.includes(kw));
+    return {
+      level: isComplex ? "opus" : "sonnet",
+      reason: isComplex
+        ? "Complex design task — using opus for depth"
+        : "Standard design task — using sonnet",
     };
   }
 

@@ -68,6 +68,12 @@ export function createStatusTool(api: OpenClawPluginApi) {
               level: project.qa.level,
               startTime: project.qa.startTime,
             },
+            architect: {
+              active: project.architect.active,
+              issueId: project.architect.issueId,
+              level: project.architect.level,
+              startTime: project.architect.startTime,
+            },
             queue: queueCounts,
           };
         }),

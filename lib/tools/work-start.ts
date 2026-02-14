@@ -28,14 +28,14 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       properties: {
         projectGroupId: { type: "string", description: "Project group ID." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
-        role: { type: "string", enum: ["dev", "qa"], description: "Worker role. Auto-detected from label if omitted." },
+        role: { type: "string", enum: ["dev", "qa", "architect"], description: "Worker role. Auto-detected from label if omitted." },
         level: { type: "string", description: "Developer level (junior/medior/senior/reviewer). Auto-detected if omitted." },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
       const issueIdParam = params.issueId as number | undefined;
-      const roleParam = params.role as "dev" | "qa" | undefined;
+      const roleParam = params.role as "dev" | "qa" | "architect" | undefined;
       const groupId = params.projectGroupId as string;
       const levelParam = (params.level ?? params.tier) as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);

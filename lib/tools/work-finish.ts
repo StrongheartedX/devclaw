@@ -21,7 +21,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       type: "object",
       required: ["role", "result", "projectGroupId"],
       properties: {
-        role: { type: "string", enum: ["dev", "qa"], description: "Worker role" },
+        role: { type: "string", enum: ["dev", "qa", "architect"], description: "Worker role" },
         result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked"], description: "Completion result" },
         projectGroupId: { type: "string", description: "Project group ID" },
         summary: { type: "string", description: "Brief summary" },
@@ -30,7 +30,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const role = params.role as "dev" | "qa";
+      const role = params.role as "dev" | "qa" | "architect";
       const result = params.result as string;
       const groupId = params.projectGroupId as string;
       const summary = params.summary as string | undefined;
@@ -40,6 +40,8 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       // Validate role:result
       if (role === "dev" && result !== "done" && result !== "blocked")
         throw new Error(`DEV can only complete with "done" or "blocked", got "${result}"`);
+      if (role === "architect" && result !== "done" && result !== "blocked")
+        throw new Error(`ARCHITECT can only complete with "done" or "blocked", got "${result}"`);
       if (role === "qa" && result === "done")
         throw new Error(`QA cannot use "done". Use "pass", "fail", "refine", or "blocked".`);
       if (!getRule(role, result))

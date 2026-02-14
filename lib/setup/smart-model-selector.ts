@@ -14,6 +14,10 @@ export type ModelAssignment = {
     reviewer: string;
     tester: string;
   };
+  architect: {
+    opus: string;
+    sonnet: string;
+  };
 };
 
 /**
@@ -41,6 +45,7 @@ export async function assignModels(
     return {
       dev: { junior: model, medior: model, senior: model },
       qa: { reviewer: model, tester: model },
+      architect: { opus: model, sonnet: model },
     };
   }
 
@@ -67,6 +72,8 @@ export function formatAssignment(assignment: ModelAssignment): string {
     `| DEV  | junior   | ${assignment.dev.junior.padEnd(24)} |`,
     `| QA   | reviewer | ${assignment.qa.reviewer.padEnd(24)} |`,
     `| QA   | tester   | ${assignment.qa.tester.padEnd(24)} |`,
+    `| ARCH | opus     | ${assignment.architect.opus.padEnd(24)} |`,
+    `| ARCH | sonnet   | ${assignment.architect.sonnet.padEnd(24)} |`,
   ];
   return lines.join("\n");
 }

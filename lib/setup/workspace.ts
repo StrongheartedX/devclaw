@@ -10,6 +10,7 @@ import {
   HEARTBEAT_MD_TEMPLATE,
   DEFAULT_DEV_INSTRUCTIONS,
   DEFAULT_QA_INSTRUCTIONS,
+  DEFAULT_ARCHITECT_INSTRUCTIONS,
 } from "../templates.js";
 
 /**
@@ -48,6 +49,11 @@ export async function scaffoldWorkspace(workspacePath: string): Promise<string[]
   if (!await fileExists(qaRolePath)) {
     await fs.writeFile(qaRolePath, DEFAULT_QA_INSTRUCTIONS, "utf-8");
     filesWritten.push("projects/roles/default/qa.md");
+  }
+  const architectRolePath = path.join(defaultRolesDir, "architect.md");
+  if (!await fileExists(architectRolePath)) {
+    await fs.writeFile(architectRolePath, DEFAULT_ARCHITECT_INSTRUCTIONS, "utf-8");
+    filesWritten.push("projects/roles/default/architect.md");
   }
 
   // log/ directory (audit.log created on first write)

@@ -23,11 +23,11 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
  */
 export function parseDevClawSessionKey(
   sessionKey: string,
-): { projectName: string; role: "dev" | "qa" } | null {
-  // Match `:subagent:` prefix, then capture everything up to the last `-dev-` or `-qa-`
-  const match = sessionKey.match(/:subagent:(.+)-(dev|qa)-[^-]+$/);
+): { projectName: string; role: "dev" | "qa" | "architect" } | null {
+  // Match `:subagent:` prefix, then capture everything up to the last `-dev-`, `-qa-`, or `-architect-`
+  const match = sessionKey.match(/:subagent:(.+)-(dev|qa|architect)-[^-]+$/);
   if (!match) return null;
-  return { projectName: match[1], role: match[2] as "dev" | "qa" };
+  return { projectName: match[1], role: match[2] as "dev" | "qa" | "architect" };
 }
 
 /**
@@ -40,7 +40,7 @@ export function parseDevClawSessionKey(
 export async function loadRoleInstructions(
   workspaceDir: string,
   projectName: string,
-  role: "dev" | "qa",
+  role: "dev" | "qa" | "architect",
 ): Promise<string> {
   const projectFile = path.join(workspaceDir, "projects", "roles", projectName, `${role}.md`);
   try {

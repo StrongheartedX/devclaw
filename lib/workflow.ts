@@ -17,7 +17,7 @@ import path from "node:path";
 // ---------------------------------------------------------------------------
 
 export type StateType = "queue" | "active" | "hold" | "terminal";
-export type Role = "dev" | "qa";
+export type Role = "dev" | "qa" | "architect";
 export type TransitionAction = "gitPull" | "detectPr" | "closeIssue" | "reopenIssue";
 
 export type TransitionTarget = string | {
@@ -117,6 +117,24 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
       type: "terminal",
       label: "Done",
       color: "#5cb85c",
+    },
+    toDesign: {
+      type: "queue",
+      role: "architect",
+      label: "To Design",
+      color: "#0075ca",
+      priority: 1,
+      on: { PICKUP: "designing" },
+    },
+    designing: {
+      type: "active",
+      role: "architect",
+      label: "Designing",
+      color: "#d4c5f9",
+      on: {
+        COMPLETE: "planning",
+        BLOCKED: "refining",
+      },
     },
   },
 };
@@ -295,6 +313,8 @@ const RESULT_TO_EVENT: Record<string, string> = {
   "qa:fail": "FAIL",
   "qa:refine": "REFINE",
   "qa:blocked": "BLOCKED",
+  "architect:done": "COMPLETE",
+  "architect:blocked": "BLOCKED",
 };
 
 /**
@@ -369,6 +389,8 @@ export function getCompletionEmoji(role: Role, result: string): string {
     "qa:refine": "🤔",
     "dev:blocked": "🚫",
     "qa:blocked": "🚫",
+    "architect:done": "🏗️",
+    "architect:blocked": "🚫",
   };
   return map[`${role}:${result}`] ?? "📋";
 }
