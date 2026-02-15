@@ -8,8 +8,7 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { runSetup, type SetupOpts } from "../setup/index.js";
-import { DEFAULT_MODELS } from "../tiers.js";
-import { getLevelsForRole } from "../roles/index.js";
+import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 
 export function createSetupTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -37,44 +36,18 @@ export function createSetupTool(api: OpenClawPluginApi) {
         models: {
           type: "object",
           description: "Model overrides per role and level.",
-          properties: {
-            dev: {
+          properties: Object.fromEntries(
+            getAllRoleIds().map((role) => [role, {
               type: "object",
-              description: "Developer level models",
-              properties: {
-                junior: {
+              description: `${role.toUpperCase()} level models`,
+              properties: Object.fromEntries(
+                getLevelsForRole(role).map((level) => [level, {
                   type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.junior}`,
-                },
-                mid: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.mid}`,
-                },
-                senior: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.dev.senior}`,
-                },
-              },
-            },
-            qa: {
-              type: "object",
-              description: "QA level models",
-              properties: {
-                junior: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.junior}`,
-                },
-                mid: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.mid}`,
-                },
-                senior: {
-                  type: "string",
-                  description: `Default: ${DEFAULT_MODELS.qa.senior}`,
-                },
-              },
-            },
-          },
+                  description: `Default: ${getAllDefaultModels()[role]?.[level] ?? "auto"}`,
+                }]),
+              ),
+            }]),
+          ),
         },
         projectExecution: {
           type: "string",
@@ -112,13 +85,13 @@ export function createSetupTool(api: OpenClawPluginApi) {
           "",
         );
       }
-      lines.push(
-        "Models:",
-        ...getLevelsForRole("dev").map((t) => `  dev.${t}: ${result.models.dev[t]}`),
-        ...getLevelsForRole("qa").map((t) => `  qa.${t}: ${result.models.qa[t]}`),
-        ...getLevelsForRole("architect").map((t) => `  architect.${t}: ${result.models.architect[t]}`),
-        "",
-      );
+      lines.push("Models:");
+      for (const [role, levels] of Object.entries(result.models)) {
+        for (const [level, model] of Object.entries(levels)) {
+          lines.push(`  ${role}.${level}: ${model}`);
+        }
+      }
+      lines.push("");
 
       lines.push("Files:", ...result.filesWritten.map((f) => `  ${f}`));
 

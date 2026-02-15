@@ -9,16 +9,13 @@
  *
  * All workflow behavior is derived from this config — no hardcoded state names.
  */
-import fs from "node:fs/promises";
-import path from "node:path";
-
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 export type StateType = "queue" | "active" | "hold" | "terminal";
-/** @deprecated Use WorkerRole from lib/roles/ */
-export type Role = "dev" | "qa" | "architect";
+/** Role identifier. Built-in: "developer", "tester", "architect". Extensible via config. */
+export type Role = string;
 export type TransitionAction = "gitPull" | "detectPr" | "closeIssue" | "reopenIssue";
 
 export type TransitionTarget = string | {
@@ -64,7 +61,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
     },
     todo: {
       type: "queue",
-      role: "dev",
+      role: "developer",
       label: "To Do",
       color: "#428bca",
       priority: 1,
@@ -72,7 +69,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
     },
     doing: {
       type: "active",
-      role: "dev",
+      role: "developer",
       label: "Doing",
       color: "#f0ad4e",
       on: {
@@ -82,7 +79,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
     },
     toTest: {
       type: "queue",
-      role: "qa",
+      role: "tester",
       label: "To Test",
       color: "#5bc0de",
       priority: 2,
@@ -90,7 +87,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
     },
     testing: {
       type: "active",
-      role: "qa",
+      role: "tester",
       label: "Testing",
       color: "#9b59b6",
       on: {
@@ -102,7 +99,7 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
     },
     toImprove: {
       type: "queue",
-      role: "dev",
+      role: "developer",
       label: "To Improve",
       color: "#d9534f",
       priority: 3,
@@ -146,38 +143,15 @@ export const DEFAULT_WORKFLOW: WorkflowConfig = {
 
 /**
  * Load workflow config for a project.
- * Priority: project-specific → workspace default → built-in default
+ * Delegates to loadConfig() which handles the three-layer merge.
  */
 export async function loadWorkflow(
   workspaceDir: string,
-  _groupId?: string,
+  projectName?: string,
 ): Promise<WorkflowConfig> {
-  // TODO: Support per-project overrides from projects.json when needed
-  // For now, try workspace-level config, fall back to default
-
-  const workflowPath = path.join(workspaceDir, "projects", "workflow.json");
-  try {
-    const content = await fs.readFile(workflowPath, "utf-8");
-    const parsed = JSON.parse(content) as { workflow?: WorkflowConfig };
-    if (parsed.workflow) {
-      return mergeWorkflow(DEFAULT_WORKFLOW, parsed.workflow);
-    }
-  } catch {
-    // No custom workflow, use default
-  }
-
-  return DEFAULT_WORKFLOW;
-}
-
-/**
- * Merge custom workflow config over defaults.
- * Custom states are merged, not replaced entirely.
- */
-function mergeWorkflow(base: WorkflowConfig, custom: Partial<WorkflowConfig>): WorkflowConfig {
-  return {
-    initial: custom.initial ?? base.initial,
-    states: { ...base.states, ...custom.states },
-  };
+  const { loadConfig } = await import("./config/loader.js");
+  const config = await loadConfig(workspaceDir, projectName);
+  return config.workflow;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,31 +279,30 @@ export function findStateKeyByLabel(workflow: WorkflowConfig, label: string): st
 // ---------------------------------------------------------------------------
 
 /**
- * Map role:result to completion event name.
+ * Map completion result to workflow transition event name.
+ * Convention: "done" → COMPLETE, others → uppercase.
  */
-const RESULT_TO_EVENT: Record<string, string> = {
-  "dev:done": "COMPLETE",
-  "dev:blocked": "BLOCKED",
-  "qa:pass": "PASS",
-  "qa:fail": "FAIL",
-  "qa:refine": "REFINE",
-  "qa:blocked": "BLOCKED",
-  "architect:done": "COMPLETE",
-  "architect:blocked": "BLOCKED",
-};
+function resultToEvent(result: string): string {
+  if (result === "done") return "COMPLETE";
+  return result.toUpperCase();
+}
 
 /**
  * Get completion rule for a role:result pair.
+ * Derives entirely from workflow transitions — no hardcoded role:result mapping.
  */
 export function getCompletionRule(
   workflow: WorkflowConfig,
   role: Role,
   result: string,
 ): CompletionRule | null {
-  const event = RESULT_TO_EVENT[`${role}:${result}`];
-  if (!event) return null;
+  const event = resultToEvent(result);
 
-  const activeLabel = getActiveLabel(workflow, role);
+  let activeLabel: string;
+  try {
+    activeLabel = getActiveLabel(workflow, role);
+  } catch { return null; }
+
   const activeKey = findStateKeyByLabel(workflow, activeLabel);
   if (!activeKey) return null;
 
@@ -356,6 +329,7 @@ export function getCompletionRule(
 
 /**
  * Get human-readable next state description.
+ * Derives from target state type — no hardcoded role names.
  */
 export function getNextStateDescription(
   workflow: WorkflowConfig,
@@ -365,15 +339,13 @@ export function getNextStateDescription(
   const rule = getCompletionRule(workflow, role, result);
   if (!rule) return "";
 
-  // Find the target state to determine the description
   const targetState = findStateByLabel(workflow, rule.to);
   if (!targetState) return "";
 
   if (targetState.type === "terminal") return "Done!";
   if (targetState.type === "hold") return "awaiting human decision";
-  if (targetState.type === "queue") {
-    if (targetState.role === "qa") return "QA queue";
-    if (targetState.role === "dev") return "back to DEV";
+  if (targetState.type === "queue" && targetState.role) {
+    return `${targetState.role.toUpperCase()} queue`;
   }
 
   return rule.to;
@@ -381,19 +353,18 @@ export function getNextStateDescription(
 
 /**
  * Get emoji for a completion result.
+ * Keyed by result name — role-independent.
  */
-export function getCompletionEmoji(role: Role, result: string): string {
-  const map: Record<string, string> = {
-    "dev:done": "✅",
-    "qa:pass": "🎉",
-    "qa:fail": "❌",
-    "qa:refine": "🤔",
-    "dev:blocked": "🚫",
-    "qa:blocked": "🚫",
-    "architect:done": "🏗️",
-    "architect:blocked": "🚫",
-  };
-  return map[`${role}:${result}`] ?? "📋";
+const RESULT_EMOJI: Record<string, string> = {
+  done: "✅",
+  pass: "🎉",
+  fail: "❌",
+  refine: "🤔",
+  blocked: "🚫",
+};
+
+export function getCompletionEmoji(_role: Role, result: string): string {
+  return RESULT_EMOJI[result] ?? "📋";
 }
 
 // ---------------------------------------------------------------------------

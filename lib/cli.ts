@@ -6,8 +6,7 @@
 import type { Command } from "commander";
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { runSetup } from "./setup/index.js";
-import { DEFAULT_MODELS } from "./tiers.js";
-import { getLevelsForRole } from "./roles/index.js";
+import { getAllDefaultModels, getAllRoleIds, getLevelsForRole } from "./roles/index.js";
 
 /**
  * Register the `devclaw` CLI command group on a Commander program.
@@ -17,39 +16,41 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
     .command("devclaw")
     .description("DevClaw development pipeline tools");
 
-  devclaw
+  const setupCmd = devclaw
     .command("setup")
     .description("Set up DevClaw: create agent, configure models, write workspace files")
     .option("--new-agent <name>", "Create a new agent with this name")
     .option("--agent <id>", "Use an existing agent by ID")
-    .option("--workspace <path>", "Direct workspace path")
-    .option("--junior <model>", `Junior dev model (default: ${DEFAULT_MODELS.dev.junior})`)
-    .option("--mid <model>", `Mid dev model (default: ${DEFAULT_MODELS.dev.mid})`)
-    .option("--senior <model>", `Senior dev model (default: ${DEFAULT_MODELS.dev.senior})`)
-    .option("--qa-junior <model>", `QA junior model (default: ${DEFAULT_MODELS.qa.junior})`)
-    .option("--qa-mid <model>", `QA mid model (default: ${DEFAULT_MODELS.qa.mid})`)
-    .option("--qa-senior <model>", `QA senior model (default: ${DEFAULT_MODELS.qa.senior})`)
-    .action(async (opts) => {
-      const dev: Record<string, string> = {};
-      const qa: Record<string, string> = {};
-      if (opts.junior) dev.junior = opts.junior;
-      if (opts.mid) dev.mid = opts.mid;
-      if (opts.senior) dev.senior = opts.senior;
-      if (opts.qaJunior) qa.junior = opts.qaJunior;
-      if (opts.qaMid) qa.mid = opts.qaMid;
-      if (opts.qaSenior) qa.senior = opts.qaSenior;
+    .option("--workspace <path>", "Direct workspace path");
 
-      const hasOverrides = Object.keys(dev).length > 0 || Object.keys(qa).length > 0;
-      const models = hasOverrides
-        ? { ...(Object.keys(dev).length > 0 && { dev }), ...(Object.keys(qa).length > 0 && { qa }) }
-        : undefined;
+  // Register dynamic --<role>-<level> options from registry
+  const defaults = getAllDefaultModels();
+  for (const role of getAllRoleIds()) {
+    for (const level of getLevelsForRole(role)) {
+      const flag = `--${role}-${level}`;
+      setupCmd.option(`${flag} <model>`, `${role.toUpperCase()} ${level} model (default: ${defaults[role]?.[level] ?? "auto"})`);
+    }
+  }
+
+  setupCmd.action(async (opts) => {
+      // Build model overrides from CLI flags dynamically
+      const models: Record<string, Record<string, string>> = {};
+      for (const role of getAllRoleIds()) {
+        const roleModels: Record<string, string> = {};
+        for (const level of getLevelsForRole(role)) {
+          // camelCase key: "testerJunior" for --tester-junior, "developerMedior" for --developer-medior
+          const key = `${role}${level.charAt(0).toUpperCase()}${level.slice(1)}`;
+          if (opts[key]) roleModels[level] = opts[key];
+        }
+        if (Object.keys(roleModels).length > 0) models[role] = roleModels;
+      }
 
       const result = await runSetup({
         api,
         newAgentName: opts.newAgent,
         agentId: opts.agent,
         workspacePath: opts.workspace,
-        models,
+        models: Object.keys(models).length > 0 ? models : undefined,
       });
 
       if (result.agentCreated) {
@@ -57,9 +58,11 @@ export function registerCli(program: Command, api: OpenClawPluginApi): void {
       }
 
       console.log("Models configured:");
-      for (const t of getLevelsForRole("dev")) console.log(`  dev.${t}: ${result.models.dev[t]}`);
-      for (const t of getLevelsForRole("qa")) console.log(`  qa.${t}: ${result.models.qa[t]}`);
-      for (const t of getLevelsForRole("architect")) console.log(`  architect.${t}: ${result.models.architect[t]}`);
+      for (const [role, levels] of Object.entries(result.models)) {
+        for (const [level, model] of Object.entries(levels)) {
+          console.log(`  ${role}.${level}: ${model}`);
+        }
+      }
 
       console.log("Files written:");
       for (const file of result.filesWritten) {

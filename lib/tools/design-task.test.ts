@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { parseDevClawSessionKey } from "../bootstrap-hook.js";
-import { isArchitectLevel, levelRole, resolveModel, defaultModel, levelEmoji } from "../tiers.js";
+import { isLevelForRole, roleForLevel, resolveModel, getDefaultModel, getEmoji } from "../roles/index.js";
 import { selectLevel } from "../model-selector.js";
 import {
   DEFAULT_WORKFLOW, getQueueLabels, getActiveLabel, getCompletionRule,
@@ -14,21 +14,21 @@ import {
 
 describe("architect tiers", () => {
   it("should recognize architect levels", () => {
-    assert.strictEqual(isArchitectLevel("junior"), true);
-    assert.strictEqual(isArchitectLevel("senior"), true);
-    assert.strictEqual(isArchitectLevel("mid"), false);
+    assert.strictEqual(isLevelForRole("junior", "architect"), true);
+    assert.strictEqual(isLevelForRole("senior", "architect"), true);
+    assert.strictEqual(isLevelForRole("medior", "architect"), false);
   });
 
   it("should map architect levels to role", () => {
-    // "junior" and "senior" appear in dev first (registry order), so roleForLevel returns "dev"
-    // This is expected — use isArchitectLevel for architect-specific checks
-    assert.strictEqual(levelRole("junior"), "dev");
-    assert.strictEqual(levelRole("senior"), "dev");
+    // "junior" and "senior" appear in developer first (registry order), so roleForLevel returns "developer"
+    // This is expected — use isLevelForRole for role-specific checks
+    assert.strictEqual(roleForLevel("junior"), "developer");
+    assert.strictEqual(roleForLevel("senior"), "developer");
   });
 
   it("should resolve default architect models", () => {
-    assert.strictEqual(defaultModel("architect", "senior"), "anthropic/claude-opus-4-5");
-    assert.strictEqual(defaultModel("architect", "junior"), "anthropic/claude-sonnet-4-5");
+    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-5");
+    assert.strictEqual(getDefaultModel("architect", "junior"), "anthropic/claude-sonnet-4-5");
   });
 
   it("should resolve architect model from config", () => {
@@ -37,8 +37,8 @@ describe("architect tiers", () => {
   });
 
   it("should have architect emoji", () => {
-    assert.strictEqual(levelEmoji("architect", "senior"), "🏗️");
-    assert.strictEqual(levelEmoji("architect", "junior"), "📐");
+    assert.strictEqual(getEmoji("architect", "senior"), "🏗️");
+    assert.strictEqual(getEmoji("architect", "junior"), "📐");
   });
 });
 
@@ -76,8 +76,9 @@ describe("architect workflow states", () => {
     assert.strictEqual(rule!.to, "Refining");
   });
 
-  it("should have architect completion emoji", () => {
-    assert.strictEqual(getCompletionEmoji("architect", "done"), "🏗️");
+  it("should have completion emoji by result type", () => {
+    // Emoji is now keyed by result, not role:result
+    assert.strictEqual(getCompletionEmoji("architect", "done"), "✅");
     assert.strictEqual(getCompletionEmoji("architect", "blocked"), "🚫");
   });
 });

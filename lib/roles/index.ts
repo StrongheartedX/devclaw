@@ -13,7 +13,11 @@ export {
   isValidRole,
   getRole,
   requireRole,
+  // Role aliases
+  ROLE_ALIASES,
+  canonicalRole,
   // Level aliases
+  LEVEL_ALIASES,
   canonicalLevel,
   // Levels
   getLevelsForRole,

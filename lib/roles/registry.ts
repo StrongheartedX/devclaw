@@ -14,45 +14,45 @@
 import type { RoleConfig } from "./types.js";
 
 export const ROLE_REGISTRY: Record<string, RoleConfig> = {
-  dev: {
-    id: "dev",
-    displayName: "DEV",
-    levels: ["junior", "mid", "senior"],
-    defaultLevel: "mid",
+  developer: {
+    id: "developer",
+    displayName: "DEVELOPER",
+    levels: ["junior", "medior", "senior"],
+    defaultLevel: "medior",
     models: {
       junior: "anthropic/claude-haiku-4-5",
-      mid: "anthropic/claude-sonnet-4-5",
+      medior: "anthropic/claude-sonnet-4-5",
       senior: "anthropic/claude-opus-4-5",
     },
     emoji: {
       junior: "⚡",
-      mid: "🔧",
+      medior: "🔧",
       senior: "🧠",
     },
     fallbackEmoji: "🔧",
     completionResults: ["done", "blocked"],
-    sessionKeyPattern: "dev",
+    sessionKeyPattern: "developer",
     notifications: { onStart: true, onComplete: true },
   },
 
-  qa: {
-    id: "qa",
-    displayName: "QA",
-    levels: ["junior", "mid", "senior"],
-    defaultLevel: "mid",
+  tester: {
+    id: "tester",
+    displayName: "TESTER",
+    levels: ["junior", "medior", "senior"],
+    defaultLevel: "medior",
     models: {
       junior: "anthropic/claude-haiku-4-5",
-      mid: "anthropic/claude-sonnet-4-5",
+      medior: "anthropic/claude-sonnet-4-5",
       senior: "anthropic/claude-opus-4-5",
     },
     emoji: {
       junior: "⚡",
-      mid: "🔍",
+      medior: "🔍",
       senior: "🧠",
     },
     fallbackEmoji: "🔍",
     completionResults: ["pass", "fail", "refine", "blocked"],
-    sessionKeyPattern: "qa",
+    sessionKeyPattern: "tester",
     notifications: { onStart: true, onComplete: true },
   },
 

@@ -2,8 +2,8 @@
  * task_comment — Add review comments or notes to an issue.
  *
  * Use cases:
- * - QA worker adds review feedback without blocking pass/fail
- * - DEV worker posts implementation notes
+ * - Tester worker adds review feedback without blocking pass/fail
+ * - Developer worker posts implementation notes
  * - Orchestrator adds summary comments
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
@@ -13,7 +13,7 @@ import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 /** Valid author roles for attribution */
-const AUTHOR_ROLES = ["dev", "qa", "orchestrator"] as const;
+const AUTHOR_ROLES = ["developer", "tester", "orchestrator"] as const;
 type AuthorRole = (typeof AUTHOR_ROLES)[number];
 
 export function createTaskCommentTool(api: OpenClawPluginApi) {
@@ -23,15 +23,15 @@ export function createTaskCommentTool(api: OpenClawPluginApi) {
     description: `Add a comment to an issue. Use this for review feedback, implementation notes, or any discussion that doesn't require a state change.
 
 Use cases:
-- QA adds review feedback without blocking pass/fail
-- DEV posts implementation notes or progress updates
+- Tester adds review feedback without blocking pass/fail
+- Developer posts implementation notes or progress updates
 - Orchestrator adds summary comments
 - Cross-referencing related issues or PRs
 
 Examples:
 - Simple: { projectGroupId: "-123456789", issueId: 42, body: "Found an edge case with null inputs" }
-- With role: { projectGroupId: "-123456789", issueId: 42, body: "LGTM!", authorRole: "qa" }
-- Detailed: { projectGroupId: "-123456789", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "dev" }`,
+- With role: { projectGroupId: "-123456789", issueId: 42, body: "LGTM!", authorRole: "tester" }
+- Detailed: { projectGroupId: "-123456789", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
     parameters: {
       type: "object",
       required: ["projectGroupId", "issueId", "body"],
@@ -100,7 +100,7 @@ Examples:
 // ---------------------------------------------------------------------------
 
 const ROLE_EMOJI: Record<AuthorRole, string> = {
-  dev: "👨‍💻",
-  qa: "🔍",
+  developer: "👨‍💻",
+  tester: "🔍",
   orchestrator: "🎛️",
 };

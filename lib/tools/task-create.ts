@@ -13,7 +13,8 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
-import { STATE_LABELS, type StateLabel } from "../providers/provider.js";
+import type { StateLabel } from "../providers/provider.js";
+import { DEFAULT_WORKFLOW, getStateLabels } from "../workflow.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 export function createTaskCreateTool(api: OpenClawPluginApi) {
@@ -46,7 +47,7 @@ Examples:
         label: {
           type: "string",
           description: `State label. Defaults to "Planning" — only use "To Do" when the user explicitly asks to start work immediately.`,
-          enum: STATE_LABELS,
+          enum: getStateLabels(DEFAULT_WORKFLOW),
         },
         assignees: {
           type: "array",

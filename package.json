@@ -53,5 +53,8 @@
   "devDependencies": {
     "@types/node": "^25.2.3",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
   }
 }

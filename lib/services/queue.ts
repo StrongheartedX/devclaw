@@ -14,26 +14,6 @@ import {
 } from "../workflow.js";
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use string labels from workflow config instead.
- * Kept for backward compatibility.
- */
-export type QueueLabel = "To Improve" | "To Test" | "To Do";
-
-/**
- * @deprecated Use getQueuePriority() instead.
- * Kept for backward compatibility.
- */
-export const QUEUE_PRIORITY: Record<string, number> = {
-  "To Improve": 3,
-  "To Test": 2,
-  "To Do": 1,
-};
-
-// ---------------------------------------------------------------------------
 // Workflow-driven helpers
 // ---------------------------------------------------------------------------
 

@@ -5,14 +5,14 @@
  */
 
 export type ModelAssignment = {
-  dev: {
+  developer: {
     junior: string;
-    mid: string;
+    medior: string;
     senior: string;
   };
-  qa: {
+  tester: {
     junior: string;
-    mid: string;
+    medior: string;
     senior: string;
   };
   architect: {
@@ -44,8 +44,8 @@ export async function assignModels(
   if (authenticated.length === 1) {
     const model = authenticated[0].model;
     return {
-      dev: { junior: model, mid: model, senior: model },
-      qa: { junior: model, mid: model, senior: model },
+      developer: { junior: model, medior: model, senior: model },
+      tester: { junior: model, medior: model, senior: model },
       architect: { junior: model, senior: model },
     };
   }
@@ -66,16 +66,16 @@ export async function assignModels(
  */
 export function formatAssignment(assignment: ModelAssignment): string {
   const lines = [
-    "| Role | Level    | Model                    |",
-    "|------|----------|--------------------------|",
-    `| DEV  | senior   | ${assignment.dev.senior.padEnd(24)} |`,
-    `| DEV  | mid      | ${assignment.dev.mid.padEnd(24)} |`,
-    `| DEV  | junior   | ${assignment.dev.junior.padEnd(24)} |`,
-    `| QA   | senior   | ${assignment.qa.senior.padEnd(24)} |`,
-    `| QA   | mid      | ${assignment.qa.mid.padEnd(24)} |`,
-    `| QA   | junior   | ${assignment.qa.junior.padEnd(24)} |`,
-    `| ARCH | senior   | ${assignment.architect.senior.padEnd(24)} |`,
-    `| ARCH | junior   | ${assignment.architect.junior.padEnd(24)} |`,
+    "| Role      | Level    | Model                    |",
+    "|-----------|----------|--------------------------|",
+    `| DEVELOPER | senior   | ${assignment.developer.senior.padEnd(24)} |`,
+    `| DEVELOPER | medior   | ${assignment.developer.medior.padEnd(24)} |`,
+    `| DEVELOPER | junior   | ${assignment.developer.junior.padEnd(24)} |`,
+    `| TESTER    | senior   | ${assignment.tester.senior.padEnd(24)} |`,
+    `| TESTER    | medior   | ${assignment.tester.medior.padEnd(24)} |`,
+    `| TESTER    | junior   | ${assignment.tester.junior.padEnd(24)} |`,
+    `| ARCHITECT | senior   | ${assignment.architect.senior.padEnd(24)} |`,
+    `| ARCHITECT | junior   | ${assignment.architect.junior.padEnd(24)} |`,
   ];
   return lines.join("\n");
 }

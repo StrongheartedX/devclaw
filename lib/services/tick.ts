@@ -11,9 +11,9 @@ import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
-import { getAllRoleIds, getLevelsForRole, getAllLevels, roleForLevel } from "../roles/index.js";
+import { getLevelsForRole, getAllLevels, roleForLevel } from "../roles/index.js";
+import { loadConfig } from "../config/index.js";
 import {
-  DEFAULT_WORKFLOW,
   getQueueLabels,
   getAllQueueLabels,
   getActiveLabel,
@@ -21,25 +21,6 @@ import {
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
-
-// ---------------------------------------------------------------------------
-// Backward compatibility exports (deprecated)
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use getQueueLabels(workflow, "dev") instead.
- */
-export const DEV_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "dev");
-
-/**
- * @deprecated Use getQueueLabels(workflow, "qa") instead.
- */
-export const QA_LABELS: StateLabel[] = getQueueLabels(DEFAULT_WORKFLOW, "qa");
-
-/**
- * @deprecated Use getAllQueueLabels(workflow) instead.
- */
-export const PRIORITY_ORDER: StateLabel[] = getAllQueueLabels(DEFAULT_WORKFLOW);
 
 // ---------------------------------------------------------------------------
 // Shared helpers (used by tick, work-start, auto-pickup)
@@ -68,7 +49,7 @@ export function detectLevelFromLabels(labels: string[]): string | null {
  */
 export function detectRoleFromLabel(
   label: StateLabel,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+  workflow: WorkflowConfig,
 ): Role | null {
   return workflowDetectRole(workflow, label);
 }
@@ -76,7 +57,7 @@ export function detectRoleFromLabel(
 export async function findNextIssueForRole(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
   role: Role,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+  workflow: WorkflowConfig,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
   const labels = getQueueLabels(workflow, role);
   for (const label of labels) {
@@ -93,8 +74,8 @@ export async function findNextIssueForRole(
  */
 export async function findNextIssue(
   provider: Pick<IssueProvider, "listIssuesByLabel">,
-  role?: Role,
-  workflow: WorkflowConfig = DEFAULT_WORKFLOW,
+  role: Role | undefined,
+  workflow: WorkflowConfig,
 ): Promise<{ issue: Issue; label: StateLabel } | null> {
   const labels = role
     ? getQueueLabels(workflow, role)
@@ -156,15 +137,20 @@ export async function projectTick(opts: {
   const {
     workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun,
     maxPickups, targetRole, runtime,
-    workflow = DEFAULT_WORKFLOW,
   } = opts;
 
   const project = (await readProjects(workspaceDir)).projects[groupId];
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
+  const resolvedConfig = await loadConfig(workspaceDir, project.name);
+  const workflow = opts.workflow ?? resolvedConfig.workflow;
+
   const provider = opts.provider ?? (await createProvider({ repo: project.repo, provider: project.provider })).provider;
   const roleExecution = project.roleExecution ?? "parallel";
-  const roles: Role[] = targetRole ? [targetRole] : getAllRoleIds() as Role[];
+  const enabledRoles = Object.entries(resolvedConfig.roles)
+    .filter(([, r]) => r.enabled)
+    .map(([id]) => id);
+  const roles: Role[] = targetRole ? [targetRole] : enabledRoles;
 
   const pickups: TickAction[] = [];
   const skipped: TickResult["skipped"] = [];
@@ -186,8 +172,8 @@ export async function projectTick(opts: {
       continue;
     }
     // Check sequential role execution: any other role must be inactive
-    const otherRoles = getAllRoleIds().filter(r => r !== role);
-    if (roleExecution === "sequential" && otherRoles.some(r => getWorker(fresh, r as any).active)) {
+    const otherRoles = enabledRoles.filter((r: string) => r !== role);
+    if (roleExecution === "sequential" && otherRoles.some((r: string) => getWorker(fresh, r).active)) {
       skipped.push({ role, reason: "Sequential: other role active" });
       continue;
     }

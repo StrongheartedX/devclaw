@@ -5,7 +5,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { DEFAULT_MODELS } from "./tiers.js";
+import { getAllDefaultModels } from "./roles/index.js";
 
 // ---------------------------------------------------------------------------
 // Detection
@@ -38,15 +38,11 @@ export async function hasWorkspaceFiles(
 // ---------------------------------------------------------------------------
 
 function buildModelTable(pluginConfig?: Record<string, unknown>): string {
-  const cfg = (
-    pluginConfig as {
-      models?: { dev?: Record<string, string>; qa?: Record<string, string> };
-    }
-  )?.models;
+  const cfg = (pluginConfig as { models?: Record<string, Record<string, string>> })?.models;
   const lines: string[] = [];
-  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
+  for (const [role, levels] of Object.entries(getAllDefaultModels())) {
     for (const [level, defaultModel] of Object.entries(levels)) {
-      const model = cfg?.[role as "dev" | "qa"]?.[level] || defaultModel;
+      const model = cfg?.[role]?.[level] || defaultModel;
       lines.push(
         `  - **${role} ${level}**: ${model} (default: ${defaultModel})`,
       );
@@ -76,14 +72,14 @@ Ask what they want to change, then call the appropriate tool.
 }
 
 export function buildOnboardToolContext(): string {
-  // Build the model table dynamically from DEFAULT_MODELS
+  // Build the model table dynamically from getAllDefaultModels()
   const rows: string[] = [];
   const purposes: Record<string, string> = {
     junior: "Simple tasks, single-file fixes",
-    mid: "Features, bug fixes, code review",
+    medior: "Features, bug fixes, code review",
     senior: "Architecture, refactoring, complex tasks",
   };
-  for (const [role, levels] of Object.entries(DEFAULT_MODELS)) {
+  for (const [role, levels] of Object.entries(getAllDefaultModels())) {
     for (const [level, model] of Object.entries(levels)) {
       rows.push(`| ${role} | ${level} | ${model} | ${purposes[level] ?? ""} |`);
     }
@@ -95,8 +91,8 @@ export function buildOnboardToolContext(): string {
 ## What is DevClaw?
 DevClaw turns each Telegram group into an autonomous development team:
 - An **orchestrator** that manages backlogs and delegates work
-- **DEV workers** (junior/mid/senior levels) that write code in isolated sessions
-- **QA workers** that review code and run tests
+- **Developer workers** (junior/medior/senior levels) that write code in isolated sessions
+- **Tester workers** that review code and run tests
 - Atomic tools for label transitions, session dispatch, state management, and audit logging
 
 ## Setup Steps
@@ -141,7 +137,7 @@ Ask: "Do you want to configure DevClaw for the current agent, or create a new de
 
 **Step 3: Run Setup**
 Call \`setup\` with the collected answers:
-- Current agent: \`setup({})\` or \`setup({ models: { dev: { ... }, qa: { ... } } })\`
+- Current agent: \`setup({})\` or \`setup({ models: { developer: { ... }, tester: { ... } } })\`
 - New agent: \`setup({ newAgentName: "<name>", channelBinding: "telegram"|"whatsapp"|null, migrateFrom: "<agentId>"|null, models: { ... } })\`
   - \`migrateFrom\`: Include if user wants to migrate an existing channel-wide binding
 

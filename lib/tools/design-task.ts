@@ -13,7 +13,9 @@ import { getWorker } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { DEFAULT_WORKFLOW, getActiveLabel } from "../workflow.js";
+import { loadWorkflow, getActiveLabel, getQueueLabels } from "../workflow.js";
+import { selectLevel } from "../model-selector.js";
+import { resolveModel } from "../roles/index.js";
 
 export function createDesignTaskTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -81,6 +83,14 @@ Example:
 
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider } = await resolveProvider(project);
+      const pluginConfig = getPluginConfig(api);
+
+      // Derive labels from workflow config
+      const workflow = await loadWorkflow(workspaceDir, project.name);
+      const role = "architect";
+      const queueLabels = getQueueLabels(workflow, role);
+      const queueLabel = queueLabels[0];
+      if (!queueLabel) throw new Error(`No queue state found for role "${role}" in workflow`);
 
       // Build issue body with focus areas
       const bodyParts = [description];
@@ -101,51 +111,48 @@ Example:
       );
       const issueBody = bodyParts.join("\n");
 
-      // Create issue in To Design state
-      const issue = await provider.createIssue(title, issueBody, "To Design" as StateLabel);
+      // Create issue in queue state
+      const issue = await provider.createIssue(title, issueBody, queueLabel as StateLabel);
 
       await auditLog(workspaceDir, "design_task", {
         project: project.name, groupId, issueId: issue.iid,
         title, complexity, focusAreas, dryRun,
       });
 
-      // Select level based on complexity
-      const level = complexity === "complex" ? "senior" : "junior";
+      // Select level: use complexity hint to guide the heuristic
+      const level = complexity === "complex"
+        ? selectLevel(title, "system-wide " + description, role).level
+        : selectLevel(title, description, role).level;
+      const model = resolveModel(role, level, pluginConfig);
 
       if (dryRun) {
         return jsonResult({
           success: true,
           dryRun: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: "To Design" },
-          design: {
-            level,
-            model: complexity === "complex" ? "anthropic/claude-opus-4-5" : "anthropic/claude-sonnet-4-5",
-            status: "dry_run",
-          },
-          announcement: `📐 [DRY RUN] Would spawn architect (${level}) for #${issue.iid}: ${title}\n🔗 ${issue.web_url}`,
+          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: queueLabel },
+          design: { level, model, status: "dry_run" },
+          announcement: `📐 [DRY RUN] Would spawn ${role} (${level}) for #${issue.iid}: ${title}\n🔗 ${issue.web_url}`,
         });
       }
 
-      // Check architect availability
-      const worker = getWorker(project, "architect");
+      // Check worker availability
+      const worker = getWorker(project, role);
       if (worker.active) {
         // Issue created but can't dispatch yet — will be picked up by heartbeat
         return jsonResult({
           success: true,
-          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: "To Design" },
+          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: queueLabel },
           design: {
             level,
             status: "queued",
-            reason: `Architect already active on #${worker.issueId}. Issue queued for pickup.`,
+            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Issue queued for pickup.`,
           },
-          announcement: `📐 Created design task #${issue.iid}: ${title} (queued — architect busy)\n🔗 ${issue.web_url}`,
+          announcement: `📐 Created design task #${issue.iid}: ${title} (queued — ${role} busy)\n🔗 ${issue.web_url}`,
         });
       }
 
-      // Dispatch architect
-      const workflow = DEFAULT_WORKFLOW;
-      const targetLabel = getActiveLabel(workflow, "architect");
-      const pluginConfig = getPluginConfig(api);
+      // Dispatch worker
+      const targetLabel = getActiveLabel(workflow, role);
 
       const dr = await dispatchTask({
         workspaceDir,
@@ -156,9 +163,9 @@ Example:
         issueTitle: issue.title,
         issueDescription: issueBody,
         issueUrl: issue.web_url,
-        role: "architect",
+        role,
         level,
-        fromLabel: "To Design",
+        fromLabel: queueLabel,
         toLabel: targetLabel,
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,

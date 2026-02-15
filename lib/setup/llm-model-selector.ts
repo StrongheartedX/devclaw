@@ -6,14 +6,14 @@
 import { runCommand } from "../run-command.js";
 
 export type ModelAssignment = {
-  dev: {
+  developer: {
     junior: string;
-    mid: string;
+    medior: string;
     senior: string;
   };
-  qa: {
+  tester: {
     junior: string;
-    mid: string;
+    medior: string;
     senior: string;
   };
   architect: {
@@ -37,8 +37,8 @@ export async function selectModelsWithLLM(
   if (availableModels.length === 1) {
     const model = availableModels[0].model;
     return {
-      dev: { junior: model, mid: model, senior: model },
-      qa: { junior: model, mid: model, senior: model },
+      developer: { junior: model, medior: model, senior: model },
+      tester: { junior: model, medior: model, senior: model },
       architect: { junior: model, senior: model },
     };
   }
@@ -53,27 +53,27 @@ ${modelList}
 
 All roles use the same level scheme based on task complexity:
 - **senior** (most capable): Complex architecture, refactoring, critical decisions
-- **mid** (balanced): Features, bug fixes, code review, standard tasks
+- **medior** (balanced): Features, bug fixes, code review, standard tasks
 - **junior** (fast/efficient): Simple fixes, routine tasks
 
 Rules:
 1. Prefer same provider for consistency
 2. Assign most capable model to senior
-3. Assign mid-tier model to mid
+3. Assign mid-tier model to medior
 4. Assign fastest/cheapest model to junior
 5. Consider model version numbers (higher = newer/better)
 6. Stable versions (no date) > snapshot versions (with date like 20250514)
 
 Return ONLY a JSON object in this exact format (no markdown, no explanation):
 {
-  "dev": {
+  "developer": {
     "junior": "provider/model-name",
-    "mid": "provider/model-name",
+    "medior": "provider/model-name",
     "senior": "provider/model-name"
   },
-  "qa": {
+  "tester": {
     "junior": "provider/model-name",
-    "mid": "provider/model-name",
+    "medior": "provider/model-name",
     "senior": "provider/model-name"
   },
   "architect": {
@@ -131,18 +131,18 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
     // Backfill architect if LLM didn't return it (graceful upgrade)
     if (!assignment.architect) {
       assignment.architect = {
-        senior: assignment.dev?.senior ?? availableModels[0].model,
-        junior: assignment.dev?.mid ?? availableModels[0].model,
+        senior: assignment.developer?.senior ?? availableModels[0].model,
+        junior: assignment.developer?.medior ?? availableModels[0].model,
       };
     }
 
     if (
-      !assignment.dev?.junior ||
-      !assignment.dev?.mid ||
-      !assignment.dev?.senior ||
-      !assignment.qa?.junior ||
-      !assignment.qa?.mid ||
-      !assignment.qa?.senior
+      !assignment.developer?.junior ||
+      !assignment.developer?.medior ||
+      !assignment.developer?.senior ||
+      !assignment.tester?.junior ||
+      !assignment.tester?.medior ||
+      !assignment.tester?.senior
     ) {
       console.error("Invalid assignment structure. Got:", assignment);
       throw new Error(`Invalid assignment structure from LLM. Missing fields in: ${JSON.stringify(Object.keys(assignment))}`);

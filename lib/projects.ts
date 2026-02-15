@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
+import { LEVEL_ALIASES, ROLE_ALIASES } from "./roles/index.js";
 export type WorkerState = {
   active: boolean;
   issueId: string | null;
@@ -24,38 +25,28 @@ export type Project = {
   channel?: string;
   /** Issue tracker provider type (github or gitlab). Auto-detected at registration, stored for reuse. */
   provider?: "github" | "gitlab";
-  /** Project-level role execution: parallel (DEV+QA can run simultaneously) or sequential (only one role at a time). Default: parallel */
+  /** Project-level role execution: parallel (DEVELOPER+TESTER can run simultaneously) or sequential (only one role at a time). Default: parallel */
   roleExecution?: "parallel" | "sequential";
   maxDevWorkers?: number;
   maxQaWorkers?: number;
-  dev: WorkerState;
-  qa: WorkerState;
-  architect: WorkerState;
+  /** Worker state per role (developer, tester, architect, or custom roles). */
+  workers: Record<string, WorkerState>;
 };
 
 export type ProjectsData = {
   projects: Record<string, Project>;
 };
 
-/**
- * Level migration aliases: old name → new canonical name, keyed by role.
- */
-const LEVEL_MIGRATION: Record<string, Record<string, string>> = {
-  dev: { medior: "mid" },
-  qa: { reviewer: "mid", tester: "junior" },
-  architect: { opus: "senior", sonnet: "junior" },
-};
-
 function migrateLevel(level: string | null, role: string): string | null {
   if (!level) return null;
-  return LEVEL_MIGRATION[role]?.[level] ?? level;
+  return LEVEL_ALIASES[role]?.[level] ?? level;
 }
 
 function migrateSessions(
   sessions: Record<string, string | null>,
   role: string,
 ): Record<string, string | null> {
-  const aliases = LEVEL_MIGRATION[role];
+  const aliases = LEVEL_ALIASES[role];
   if (!aliases) return sessions;
 
   const migrated: Record<string, string | null> = {};
@@ -114,15 +105,33 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
   const data = JSON.parse(raw) as ProjectsData;
 
   for (const project of Object.values(data.projects)) {
-    project.dev = project.dev
-      ? parseWorkerState(project.dev as unknown as Record<string, unknown>, "dev")
-      : emptyWorkerState([]);
-    project.qa = project.qa
-      ? parseWorkerState(project.qa as unknown as Record<string, unknown>, "qa")
-      : emptyWorkerState([]);
-    project.architect = project.architect
-      ? parseWorkerState(project.architect as unknown as Record<string, unknown>, "architect")
-      : emptyWorkerState([]);
+    // Migrate old format: hardcoded dev/qa/architect fields → workers map
+    const raw = project as unknown as Record<string, unknown>;
+    if (!raw.workers && (raw.dev || raw.qa || raw.architect)) {
+      project.workers = {};
+      for (const role of ["dev", "qa", "architect"]) {
+        const canonical = ROLE_ALIASES[role] ?? role;
+        project.workers[canonical] = raw[role]
+          ? parseWorkerState(raw[role] as Record<string, unknown>, role)
+          : emptyWorkerState([]);
+      }
+      // Clean up old fields from the in-memory object
+      delete raw.dev;
+      delete raw.qa;
+      delete raw.architect;
+    } else if (raw.workers) {
+      // New format: parse each worker with role-aware migration
+      const workers = raw.workers as Record<string, Record<string, unknown>>;
+      project.workers = {};
+      for (const [role, worker] of Object.entries(workers)) {
+        // Migrate old role keys (dev→developer, qa→tester)
+        const canonical = ROLE_ALIASES[role] ?? role;
+        project.workers[canonical] = parseWorkerState(worker, role);
+      }
+    } else {
+      project.workers = {};
+    }
+
     if (!project.channel) {
       project.channel = "telegram";
     }
@@ -150,9 +159,9 @@ export function getProject(
 
 export function getWorker(
   project: Project,
-  role: "dev" | "qa" | "architect",
+  role: string,
 ): WorkerState {
-  return project[role];
+  return project.workers[role] ?? emptyWorkerState([]);
 }
 
 /**
@@ -162,7 +171,7 @@ export function getWorker(
 export async function updateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa" | "architect",
+  role: string,
   updates: Partial<WorkerState>,
 ): Promise<ProjectsData> {
   const data = await readProjects(workspaceDir);
@@ -171,13 +180,13 @@ export async function updateWorker(
     throw new Error(`Project not found for groupId: ${groupId}`);
   }
 
-  const worker = project[role];
+  const worker = project.workers[role] ?? emptyWorkerState([]);
 
   if (updates.sessions && worker.sessions) {
     updates.sessions = { ...worker.sessions, ...updates.sessions };
   }
 
-  project[role] = { ...worker, ...updates };
+  project.workers[role] = { ...worker, ...updates };
 
   await writeProjects(workspaceDir, data);
   return data;
@@ -190,7 +199,7 @@ export async function updateWorker(
 export async function activateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa" | "architect",
+  role: string,
   params: {
     issueId: string;
     level: string;
@@ -220,7 +229,7 @@ export async function activateWorker(
 export async function deactivateWorker(
   workspaceDir: string,
   groupId: string,
-  role: "dev" | "qa" | "architect",
+  role: string,
 ): Promise<ProjectsData> {
   return updateWorker(workspaceDir, groupId, role, {
     active: false,

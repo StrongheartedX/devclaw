@@ -6,6 +6,7 @@
  */
 import { ROLE_REGISTRY } from "./registry.js";
 import type { RoleConfig } from "./types.js";
+import type { ResolvedRoleConfig } from "../config/types.js";
 
 // ---------------------------------------------------------------------------
 // Role IDs
@@ -37,12 +38,30 @@ export function requireRole(role: string): RoleConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Role aliases — maps old role IDs to new canonical IDs
+// ---------------------------------------------------------------------------
+
+/** Maps old role IDs to canonical IDs. Used for backward compatibility. */
+export const ROLE_ALIASES: Record<string, string> = {
+  dev: "developer",
+  qa: "tester",
+};
+
+/** Resolve a role ID, applying aliases for backward compatibility. */
+export function canonicalRole(role: string): string {
+  return ROLE_ALIASES[role] ?? role;
+}
+
+// ---------------------------------------------------------------------------
 // Level aliases — maps old level names to new canonical names
 // ---------------------------------------------------------------------------
 
-const LEVEL_ALIASES: Record<string, Record<string, string>> = {
-  dev: { medior: "mid" },
-  qa: { reviewer: "mid", tester: "junior" },
+/** Maps old level names to canonical names, per role. Used for backward compatibility. */
+export const LEVEL_ALIASES: Record<string, Record<string, string>> = {
+  developer: { mid: "medior", medior: "medior" },
+  dev: { mid: "medior", medior: "medior" },
+  tester: { mid: "medior", reviewer: "medior", tester: "junior" },
+  qa: { mid: "medior", reviewer: "medior", tester: "junior" },
   architect: { opus: "senior", sonnet: "junior" },
 };
 
@@ -105,23 +124,32 @@ export function getAllDefaultModels(): Record<string, Record<string, string>> {
  * Resolve a level to a full model ID.
  *
  * Resolution order:
- * 1. Plugin config `models.<role>.<level>` (tries canonical name, then original)
- * 2. Registry default model
- * 3. Passthrough (treat level as raw model ID)
+ * 1. Plugin config `models.<role>.<level>` in openclaw.json (highest precedence)
+ * 2. Resolved config from config.yaml (if provided)
+ * 3. Registry default model
+ * 4. Passthrough (treat level as raw model ID)
  */
 export function resolveModel(
   role: string,
   level: string,
   pluginConfig?: Record<string, unknown>,
+  resolvedRole?: ResolvedRoleConfig,
 ): string {
   const canonical = canonicalLevel(role, level);
+
+  // 1. Plugin config override (openclaw.json) — check canonical role + old aliases
   const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
   if (models && typeof models === "object") {
-    const roleModels = models[role] as Record<string, string> | undefined;
-    // Try canonical name first, then original (for old configs)
+    // Check canonical role name, then fall back to old aliases (e.g., "dev" for "developer")
+    const roleModels = (models[role] ?? models[Object.entries(ROLE_ALIASES).find(([, v]) => v === role)?.[0] ?? ""]) as Record<string, string> | undefined;
     if (roleModels?.[canonical]) return roleModels[canonical];
     if (roleModels?.[level]) return roleModels[level];
   }
+
+  // 2. Resolved config (config.yaml)
+  if (resolvedRole?.models[canonical]) return resolvedRole.models[canonical];
+
+  // 3. Built-in registry default
   return getDefaultModel(role, canonical) ?? canonical;
 }
 

@@ -18,7 +18,6 @@ import { log as auditLog } from "../audit.js";
 import { checkWorkerHealth, scanOrphanedLabels, fetchGatewaySessions, type SessionLookup } from "./health.js";
 import { projectTick } from "./tick.js";
 import { createProvider } from "../providers/index.js";
-import { getAllRoleIds } from "../roles/index.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -307,13 +306,13 @@ async function performHealthPass(
   const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
   let fixedCount = 0;
 
-  for (const role of getAllRoleIds()) {
+  for (const role of Object.keys(project.workers)) {
     // Check worker health (session liveness, label consistency, etc)
     const healthFixes = await checkWorkerHealth({
       workspaceDir,
       groupId,
       project,
-      role: role as any,
+      role,
       sessions,
       autoFix: true,
       provider,
@@ -325,7 +324,7 @@ async function performHealthPass(
       workspaceDir,
       groupId,
       project,
-      role: role as any,
+      role,
       autoFix: true,
       provider,
     });
@@ -336,10 +335,10 @@ async function performHealthPass(
 }
 
 /**
- * Check if a project has active work (dev or qa).
+ * Check if a project has any active worker.
  */
 async function checkProjectActive(workspaceDir: string, groupId: string): Promise<boolean> {
   const fresh = (await readProjects(workspaceDir)).projects[groupId];
   if (!fresh) return false;
-  return fresh.dev.active || fresh.qa.active;
+  return Object.values(fresh.workers).some(w => w.active);
 }

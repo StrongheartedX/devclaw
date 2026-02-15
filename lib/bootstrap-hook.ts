@@ -17,8 +17,8 @@ import { getSessionKeyRolePattern } from "./roles/index.js";
  *
  * Session key format: `agent:{agentId}:subagent:{projectName}-{role}-{level}`
  * Examples:
- *   - `agent:devclaw:subagent:my-project-dev-mid`   → { projectName: "my-project", role: "dev" }
- *   - `agent:devclaw:subagent:webapp-qa-mid`        → { projectName: "webapp", role: "qa" }
+ *   - `agent:devclaw:subagent:my-project-developer-medior` → { projectName: "my-project", role: "developer" }
+ *   - `agent:devclaw:subagent:webapp-tester-medior`        → { projectName: "webapp", role: "tester" }
  *
  * Note: projectName may contain hyphens, so we match role from the end.
  */

@@ -17,40 +17,6 @@ import {
   type WorkflowConfig,
 } from "../workflow.js";
 
-// ---------------------------------------------------------------------------
-// Backward compatibility exports
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use getCompletionRule() from workflow.ts instead.
- * Kept for backward compatibility.
- */
-export const COMPLETION_RULES: Record<string, CompletionRule> = {
-  "dev:done":       { from: "Doing",     to: "To Test",    gitPull: true, detectPr: true },
-  "qa:pass":        { from: "Testing",   to: "Done",       closeIssue: true },
-  "qa:fail":        { from: "Testing",   to: "To Improve", reopenIssue: true },
-  "qa:refine":      { from: "Testing",   to: "Refining" },
-  "dev:blocked":    { from: "Doing",     to: "Refining" },
-  "qa:blocked":     { from: "Testing",   to: "Refining" },
-  "architect:done": { from: "Designing", to: "Planning" },
-  "architect:blocked": { from: "Designing", to: "Refining" },
-};
-
-/**
- * @deprecated Use getNextStateDescription() from workflow.ts instead.
- */
-export const NEXT_STATE: Record<string, string> = {
-  "dev:done":         "QA queue",
-  "dev:blocked":      "moved to Refining - needs human input",
-  "qa:pass":          "Done!",
-  "qa:fail":          "back to DEV",
-  "qa:refine":        "awaiting human decision",
-  "qa:blocked":       "moved to Refining - needs human input",
-  "architect:done":   "Planning — ready for review",
-  "architect:blocked": "moved to Refining - needs clarification",
-};
-
-// Re-export CompletionRule type for backward compatibility
 export type { CompletionRule };
 
 export type CompletionOutput = {
@@ -72,7 +38,7 @@ export function getRule(
   result: string,
   workflow: WorkflowConfig = DEFAULT_WORKFLOW,
 ): CompletionRule | undefined {
-  return getCompletionRule(workflow, role as "dev" | "qa", result) ?? undefined;
+  return getCompletionRule(workflow, role, result) ?? undefined;
 }
 
 /**
@@ -81,7 +47,7 @@ export function getRule(
 export async function executeCompletion(opts: {
   workspaceDir: string;
   groupId: string;
-  role: "dev" | "qa" | "architect";
+  role: string;
   result: string;
   issueId: number;
   summary?: string;

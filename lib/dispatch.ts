@@ -13,8 +13,9 @@ import {
   getSessionForLevel,
   getWorker,
 } from "./projects.js";
-import { resolveModel, getEmoji, getFallbackEmoji } from "./roles/index.js";
+import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
+import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
@@ -25,7 +26,7 @@ export type DispatchOpts = {
   issueTitle: string;
   issueDescription: string;
   issueUrl: string;
-  role: "dev" | "qa" | "architect";
+  role: string;
   /** Developer level (junior, mid, senior) or raw model ID */
   level: string;
   /** Label to transition FROM (e.g. "To Do", "To Test", "To Improve") */
@@ -63,7 +64,7 @@ export type DispatchResult = {
  */
 export function buildTaskMessage(opts: {
   projectName: string;
-  role: "dev" | "qa" | "architect";
+  role: string;
   issueId: number;
   issueTitle: string;
   issueDescription: string;
@@ -72,16 +73,15 @@ export function buildTaskMessage(opts: {
   baseBranch: string;
   groupId: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
+  resolvedRole?: ResolvedRoleConfig;
 }): string {
   const {
     projectName, role, issueId, issueTitle,
     issueDescription, issueUrl, repo, baseBranch, groupId,
   } = opts;
 
-  const availableResults =
-    role === "dev" || role === "architect"
-      ? '"done" (completed successfully) or "blocked" (cannot complete, need help)'
-      : '"pass" (approved), "fail" (issues found), "refine" (needs human input), or "blocked" (cannot complete)';
+  const results = opts.resolvedRole?.completionResults ?? [];
+  const availableResults = results.map((r: string) => `"${r}"`).join(", ");
 
   const parts = [
     `${role.toUpperCase()} task for project "${projectName}" — Issue #${issueId}`,
@@ -149,7 +149,9 @@ export async function dispatchTask(
     transitionLabel, provider, pluginConfig, runtime,
   } = opts;
 
-  const model = resolveModel(role, level, pluginConfig);
+  const resolvedConfig = await loadConfig(workspaceDir, project.name);
+  const resolvedRole = resolvedConfig.roles[role];
+  const model = resolveModel(role, level, pluginConfig, resolvedRole);
   const worker = getWorker(project, role);
   const existingSessionKey = getSessionForLevel(worker, level);
   const sessionAction = existingSessionKey ? "send" : "spawn";
@@ -164,7 +166,7 @@ export async function dispatchTask(
     projectName: project.name, role, issueId,
     issueTitle, issueDescription, issueUrl,
     repo: project.repo, baseBranch: project.baseBranch, groupId,
-    comments,
+    comments, resolvedRole,
   });
 
   // Step 1: Transition label (this is the commitment point)
@@ -225,7 +227,7 @@ export async function dispatchTask(
     fromLabel, toLabel,
   });
 
-  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl);
+  const announcement = buildAnnouncement(level, role, sessionAction, issueId, issueTitle, issueUrl, resolvedRole);
 
   return { sessionAction, sessionKey, level, model, announcement };
 }
@@ -267,7 +269,7 @@ function sendToAgent(
 }
 
 async function recordWorkerState(
-  workspaceDir: string, groupId: string, role: "dev" | "qa" | "architect",
+  workspaceDir: string, groupId: string, role: string,
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send" },
 ): Promise<void> {
   await activateWorker(workspaceDir, groupId, role, {
@@ -301,8 +303,9 @@ async function auditDispatch(
 function buildAnnouncement(
   level: string, role: string, sessionAction: "spawn" | "send",
   issueId: number, issueTitle: string, issueUrl: string,
+  resolvedRole?: ResolvedRoleConfig,
 ): string {
-  const emoji = getEmoji(role, level) ?? getFallbackEmoji(role);
+  const emoji = resolvedRole?.emoji[level] ?? getFallbackEmoji(role);
   const actionVerb = sessionAction === "spawn" ? "Spawning" : "Sending";
   return `${emoji} ${actionVerb} ${role.toUpperCase()} (${level}) for #${issueId}: ${issueTitle}\n🔗 ${issueUrl}`;
 }

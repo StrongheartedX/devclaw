@@ -3,7 +3,7 @@
  * Used by setup and project_register.
  */
 
-export const DEFAULT_DEV_INSTRUCTIONS = `# DEV Worker Instructions
+export const DEFAULT_DEV_INSTRUCTIONS = `# DEVELOPER Worker Instructions
 
 ## Context You Receive
 
@@ -24,19 +24,19 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Create an MR/PR to the base branch and merge it
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses QA.
 - Clean up the worktree after merging
-- When done, call work_finish with role "dev", result "done", and a brief summary
+- When done, call work_finish with role "developer", result "done", and a brief summary
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
 
-export const DEFAULT_QA_INSTRUCTIONS = `# QA Worker Instructions
+export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
 
 - Pull latest from the base branch
 - Run tests and linting
 - Verify the changes address the issue requirements
 - Check for regressions in related functionality
 - **Always** call task_comment with your review findings — even if everything looks good, leave a brief summary of what you checked
-- When done, call work_finish with role "qa" and one of:
+- When done, call work_finish with role "tester" and one of:
   - result "pass" if everything looks good
   - result "fail" with specific issues if problems found
   - result "refine" if you need human input to decide
@@ -55,7 +55,7 @@ Investigate the design problem thoroughly:
 2. **Research alternatives** — Explore >= 3 viable approaches
 3. **Evaluate tradeoffs** — Consider simplicity, performance, maintainability, architecture fit
 4. **Recommend** — Pick the best option with clear reasoning
-5. **Outline implementation** — Break down into dev tasks
+5. **Outline implementation** — Break down into developer tasks
 
 ## Output Format
 
@@ -115,9 +115,16 @@ Your session is persistent — you may be called back for refinements.
 Do NOT call work_start, status, health, or project_register.
 `;
 
+/** Default role instructions indexed by role ID. Used by project scaffolding. */
+export const DEFAULT_ROLE_INSTRUCTIONS: Record<string, string> = {
+  developer: DEFAULT_DEV_INSTRUCTIONS,
+  tester: DEFAULT_QA_INSTRUCTIONS,
+  architect: DEFAULT_ARCHITECT_INSTRUCTIONS,
+};
+
 export const AGENTS_MD_TEMPLATE = `# AGENTS.md - Development Orchestration (DevClaw)
 
-## If You Are a Sub-Agent (DEV/QA Worker)
+## If You Are a Sub-Agent (DEVELOPER/TESTER Worker)
 
 Skip the orchestrator section. Follow your task message and role instructions (appended to the task message).
 
@@ -126,21 +133,21 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 - Conventional commits: \`feat:\`, \`fix:\`, \`chore:\`, \`refactor:\`, \`test:\`, \`docs:\`
 - Include issue number: \`feat: add user authentication (#12)\`
 - Branch naming: \`feature/<id>-<slug>\` or \`fix/<id>-<slug>\`
-- **DEV always works in a git worktree** (never switch branches in the main repo)
-- **DEV must merge to base branch** before announcing completion
-- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses QA.
-- **QA tests on the deployed version** and inspects code on the base branch
-- **QA always calls task_comment** with review findings before completing
+- **DEVELOPER always works in a git worktree** (never switch branches in the main repo)
+- **DEVELOPER must merge to base branch** before announcing completion
+- **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses testing.
+- **TESTER tests on the deployed version** and inspects code on the base branch
+- **TESTER always calls task_comment** with review findings before completing
 - Always run tests before completing
 
 ### Completing Your Task
 
 When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
-- **DEV done:** \`work_finish({ role: "dev", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **QA pass:** \`work_finish({ role: "qa", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **QA fail:** \`work_finish({ role: "qa", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
-- **QA refine:** \`work_finish({ role: "qa", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
+- **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
+- **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
+- **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
 - **Architect done:** \`work_finish({ role: "architect", result: "done", projectGroupId: "<from task message>", summary: "<recommendation summary>" })\`
 
 The \`projectGroupId\` is included in your task message.
@@ -167,14 +174,14 @@ You are a **development orchestrator** — a planner and dispatcher, not a coder
 **Never write code yourself.** All implementation work MUST go through the issue → worker pipeline:
 
 1. Create an issue via \`task_create\`
-2. Dispatch a DEV worker via \`work_start\`
+2. Dispatch a DEVELOPER worker via \`work_start\`
 3. Let the worker handle implementation, git, and PRs
 
 **Why this matters:**
 - **Audit trail** — Every code change is tracked to an issue
-- **Level selection** — Junior/mid/senior models match task complexity
+- **Level selection** — Junior/medior/senior models match task complexity
 - **Parallelization** — Workers run in parallel, you stay free to plan
-- **QA pipeline** — Code goes through review before closing
+- **Testing pipeline** — Code goes through review before closing
 
 **What you CAN do directly:**
 - Planning, analysis, architecture discussions
@@ -195,7 +202,7 @@ You are a **development orchestrator** — a planner and dispatcher, not a coder
 
 Examples:
 - ✅ "Created issue #42: Fix login bug 🔗 https://github.com/org/repo/issues/42"
-- ✅ "Picked up #42 for DEV (mid) 🔗 https://github.com/org/repo/issues/42"
+- ✅ "Picked up #42 for DEVELOPER (medior) 🔗 https://github.com/org/repo/issues/42"
 - ❌ "Created issue #42 about the login bug" (missing URL)
 
 ### DevClaw Tools
@@ -232,10 +239,10 @@ Issue labels are the single source of truth for task state.
 Evaluate each task and pass the appropriate developer level to \`work_start\`:
 
 - **junior** — trivial: typos, single-file fix, quick change
-- **mid** — standard: features, bug fixes, multi-file changes
+- **medior** — standard: features, bug fixes, multi-file changes
 - **senior** — complex: architecture, system-wide refactoring, 5+ services
 
-All roles (DEV, QA, Architect) use the same level scheme. Levels describe task complexity, not the model.
+All roles (Developer, Tester, Architect) use the same level scheme. Levels describe task complexity, not the model.
 
 ### Picking Up Work
 
@@ -249,10 +256,10 @@ All roles (DEV, QA, Architect) use the same level scheme. Levels describe task c
 
 Workers call \`work_finish\` themselves — the label transition, state update, and audit log happen atomically. The heartbeat service will pick up the next task on its next cycle:
 
-- DEV "done" → issue moves to "To Test" → scheduler dispatches QA
-- QA "fail" → issue moves to "To Improve" → scheduler dispatches DEV
-- QA "pass" → Done, no further dispatch
-- QA "refine" / blocked → needs human input
+- Developer "done" → issue moves to "To Test" → scheduler dispatches Tester
+- Tester "fail" → issue moves to "To Improve" → scheduler dispatches Developer
+- Tester "pass" → Done, no further dispatch
+- Tester "refine" / blocked → needs human input
 - Architect "done" → issue moves to "Planning" → ready for tech lead review
 
 **Always include issue URLs** in your response — these are in the \`announcement\` fields.
@@ -267,10 +274,10 @@ Workers receive role-specific instructions appended to their task message. These
 
 ### Safety
 
-- **Never write code yourself** — always dispatch a DEV worker
+- **Never write code yourself** — always dispatch a Developer worker
 - Don't push to main directly
 - Don't force-push
-- Don't close issues without QA pass
+- Don't close issues without Tester pass
 - Ask before architectural decisions affecting multiple projects
 `;
 
