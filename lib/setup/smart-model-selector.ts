@@ -3,23 +3,25 @@
  *
  * Uses an LLM to intelligently analyze and assign models to DevClaw roles.
  */
+import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
+import { ROLE_REGISTRY } from "../roles/index.js";
 
-export type ModelAssignment = {
-  developer: {
-    junior: string;
-    medior: string;
-    senior: string;
-  };
-  tester: {
-    junior: string;
-    medior: string;
-    senior: string;
-  };
-  architect: {
-    junior: string;
-    senior: string;
-  };
-};
+/** Model assignment: role → level → model ID. Derived from registry structure. */
+export type ModelAssignment = Record<string, Record<string, string>>;
+
+/**
+ * Build a ModelAssignment where every role/level maps to the same model.
+ */
+function singleModelAssignment(model: string): ModelAssignment {
+  const result: ModelAssignment = {};
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    result[roleId] = {};
+    for (const level of config.levels) {
+      result[roleId][level] = model;
+    }
+  }
+  return result;
+}
 
 /**
  * Intelligently assign available models to DevClaw roles using an LLM.
@@ -42,12 +44,7 @@ export async function assignModels(
 
   // If only one model, use it for everything
   if (authenticated.length === 1) {
-    const model = authenticated[0].model;
-    return {
-      developer: { junior: model, medior: model, senior: model },
-      tester: { junior: model, medior: model, senior: model },
-      architect: { junior: model, senior: model },
-    };
+    return singleModelAssignment(authenticated[0].model);
   }
 
   // Multiple models: use LLM-based selection
@@ -68,15 +65,16 @@ export function formatAssignment(assignment: ModelAssignment): string {
   const lines = [
     "| Role      | Level    | Model                    |",
     "|-----------|----------|--------------------------|",
-    `| DEVELOPER | senior   | ${assignment.developer.senior.padEnd(24)} |`,
-    `| DEVELOPER | medior   | ${assignment.developer.medior.padEnd(24)} |`,
-    `| DEVELOPER | junior   | ${assignment.developer.junior.padEnd(24)} |`,
-    `| TESTER    | senior   | ${assignment.tester.senior.padEnd(24)} |`,
-    `| TESTER    | medior   | ${assignment.tester.medior.padEnd(24)} |`,
-    `| TESTER    | junior   | ${assignment.tester.junior.padEnd(24)} |`,
-    `| ARCHITECT | senior   | ${assignment.architect.senior.padEnd(24)} |`,
-    `| ARCHITECT | junior   | ${assignment.architect.junior.padEnd(24)} |`,
   ];
+  for (const roleId of getAllRoleIds()) {
+    const roleModels = assignment[roleId];
+    if (!roleModels) continue;
+    const displayName = ROLE_REGISTRY[roleId]?.displayName ?? roleId.toUpperCase();
+    for (const level of getLevelsForRole(roleId)) {
+      const model = roleModels[level] ?? "";
+      lines.push(`| ${displayName.padEnd(9)} | ${level.padEnd(8)} | ${model.padEnd(24)} |`);
+    }
+  }
   return lines.join("\n");
 }
 

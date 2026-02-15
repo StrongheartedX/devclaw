@@ -7,6 +7,7 @@
 import { ROLE_REGISTRY } from "./registry.js";
 import type { RoleConfig } from "./types.js";
 import type { ResolvedRoleConfig } from "../config/types.js";
+import { ROLE_ALIASES as _ROLE_ALIASES, canonicalLevel as _canonicalLevel } from "../migrations.js";
 
 // ---------------------------------------------------------------------------
 // Role IDs
@@ -38,37 +39,10 @@ export function requireRole(role: string): RoleConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Role aliases — maps old role IDs to new canonical IDs
+// Migration aliases — re-exported from lib/migrations.ts for backward compat
 // ---------------------------------------------------------------------------
 
-/** Maps old role IDs to canonical IDs. Used for backward compatibility. */
-export const ROLE_ALIASES: Record<string, string> = {
-  dev: "developer",
-  qa: "tester",
-};
-
-/** Resolve a role ID, applying aliases for backward compatibility. */
-export function canonicalRole(role: string): string {
-  return ROLE_ALIASES[role] ?? role;
-}
-
-// ---------------------------------------------------------------------------
-// Level aliases — maps old level names to new canonical names
-// ---------------------------------------------------------------------------
-
-/** Maps old level names to canonical names, per role. Used for backward compatibility. */
-export const LEVEL_ALIASES: Record<string, Record<string, string>> = {
-  developer: { mid: "medior", medior: "medior" },
-  dev: { mid: "medior", medior: "medior" },
-  tester: { mid: "medior", reviewer: "medior", tester: "junior" },
-  qa: { mid: "medior", reviewer: "medior", tester: "junior" },
-  architect: { opus: "senior", sonnet: "junior" },
-};
-
-/** Resolve a level name, applying aliases for backward compatibility. */
-export function canonicalLevel(role: string, level: string): string {
-  return LEVEL_ALIASES[role]?.[level] ?? level;
-}
+export { ROLE_ALIASES, canonicalRole, LEVEL_ALIASES, canonicalLevel } from "../migrations.js";
 
 // ---------------------------------------------------------------------------
 // Levels
@@ -135,13 +109,13 @@ export function resolveModel(
   pluginConfig?: Record<string, unknown>,
   resolvedRole?: ResolvedRoleConfig,
 ): string {
-  const canonical = canonicalLevel(role, level);
+  const canonical = _canonicalLevel(role, level);
 
   // 1. Plugin config override (openclaw.json) — check canonical role + old aliases
   const models = (pluginConfig as { models?: Record<string, unknown> })?.models;
   if (models && typeof models === "object") {
     // Check canonical role name, then fall back to old aliases (e.g., "dev" for "developer")
-    const roleModels = (models[role] ?? models[Object.entries(ROLE_ALIASES).find(([, v]) => v === role)?.[0] ?? ""]) as Record<string, string> | undefined;
+    const roleModels = (models[role] ?? models[Object.entries(_ROLE_ALIASES).find(([, v]) => v === role)?.[0] ?? ""]) as Record<string, string> | undefined;
     if (roleModels?.[canonical]) return roleModels[canonical];
     if (roleModels?.[level]) return roleModels[level];
   }

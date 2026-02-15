@@ -129,7 +129,7 @@ describe("models", () => {
     assert.strictEqual(getDefaultModel("developer", "junior"), "anthropic/claude-haiku-4-5");
     assert.strictEqual(getDefaultModel("developer", "medior"), "anthropic/claude-sonnet-4-5");
     assert.strictEqual(getDefaultModel("tester", "medior"), "anthropic/claude-sonnet-4-5");
-    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-5");
+    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-6");
   });
 
   it("should return all default models", () => {
@@ -150,7 +150,7 @@ describe("models", () => {
   });
 
   it("should pass through unknown level as model ID", () => {
-    assert.strictEqual(resolveModel("developer", "anthropic/claude-opus-4-5"), "anthropic/claude-opus-4-5");
+    assert.strictEqual(resolveModel("developer", "anthropic/claude-opus-4-6"), "anthropic/claude-opus-4-6");
   });
 
   it("should resolve old config keys via aliases", () => {

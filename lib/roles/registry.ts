@@ -22,7 +22,7 @@ export const ROLE_REGISTRY: Record<string, RoleConfig> = {
     models: {
       junior: "anthropic/claude-haiku-4-5",
       medior: "anthropic/claude-sonnet-4-5",
-      senior: "anthropic/claude-opus-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
       junior: "⚡",
@@ -43,7 +43,7 @@ export const ROLE_REGISTRY: Record<string, RoleConfig> = {
     models: {
       junior: "anthropic/claude-haiku-4-5",
       medior: "anthropic/claude-sonnet-4-5",
-      senior: "anthropic/claude-opus-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
       junior: "⚡",
@@ -63,7 +63,7 @@ export const ROLE_REGISTRY: Record<string, RoleConfig> = {
     defaultLevel: "junior",
     models: {
       junior: "anthropic/claude-sonnet-4-5",
-      senior: "anthropic/claude-opus-4-5",
+      senior: "anthropic/claude-opus-4-6",
     },
     emoji: {
       junior: "📐",

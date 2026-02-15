@@ -27,7 +27,7 @@ describe("architect tiers", () => {
   });
 
   it("should resolve default architect models", () => {
-    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-5");
+    assert.strictEqual(getDefaultModel("architect", "senior"), "anthropic/claude-opus-4-6");
     assert.strictEqual(getDefaultModel("architect", "junior"), "anthropic/claude-sonnet-4-5");
   });
 

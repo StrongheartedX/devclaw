@@ -15,6 +15,28 @@ import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
 import { initRunCommand } from "./lib/run-command.js";
+import { ROLE_REGISTRY } from "./lib/roles/index.js";
+
+/** Build the models config schema dynamically from the role registry. */
+function buildModelsSchema(): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    const levelProps: Record<string, unknown> = {};
+    for (const level of config.levels) {
+      levelProps[level] = { type: "string" };
+    }
+    properties[roleId] = {
+      type: "object",
+      description: `${config.displayName} level models`,
+      properties: levelProps,
+    };
+  }
+  return {
+    type: "object",
+    description: "Model mapping per role and level",
+    properties,
+  };
+}
 
 const plugin = {
   id: "devclaw",
@@ -24,38 +46,7 @@ const plugin = {
   configSchema: {
     type: "object",
     properties: {
-      models: {
-        type: "object",
-        description: "Model mapping per role and level",
-        properties: {
-          dev: {
-            type: "object",
-            description: "Developer level models",
-            properties: {
-              junior: { type: "string" },
-              mid: { type: "string" },
-              senior: { type: "string" },
-            },
-          },
-          qa: {
-            type: "object",
-            description: "QA level models",
-            properties: {
-              junior: { type: "string" },
-              mid: { type: "string" },
-              senior: { type: "string" },
-            },
-          },
-          architect: {
-            type: "object",
-            description: "Architect level models",
-            properties: {
-              junior: { type: "string" },
-              senior: { type: "string" },
-            },
-          },
-        },
-      },
+      models: buildModelsSchema(),
       projectExecution: {
         type: "string",
         enum: ["parallel", "sequential"],

@@ -4,23 +4,63 @@
  * Uses an LLM to understand model capabilities and assign optimal models to DevClaw roles.
  */
 import { runCommand } from "../run-command.js";
+import { ROLE_REGISTRY } from "../roles/index.js";
+import type { ModelAssignment } from "./smart-model-selector.js";
 
-export type ModelAssignment = {
-  developer: {
-    junior: string;
-    medior: string;
-    senior: string;
-  };
-  tester: {
-    junior: string;
-    medior: string;
-    senior: string;
-  };
-  architect: {
-    junior: string;
-    senior: string;
-  };
-};
+/**
+ * Build a ModelAssignment where every role/level maps to the same model.
+ */
+function singleModelAssignment(model: string): ModelAssignment {
+  const result: ModelAssignment = {};
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    result[roleId] = {};
+    for (const level of config.levels) {
+      result[roleId][level] = model;
+    }
+  }
+  return result;
+}
+
+/**
+ * Build the JSON format example for the LLM prompt, derived from registry.
+ */
+function buildJsonExample(): string {
+  const obj: Record<string, Record<string, string>> = {};
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    obj[roleId] = {};
+    for (const level of config.levels) {
+      obj[roleId][level] = "provider/model-name";
+    }
+  }
+  return JSON.stringify(obj, null, 2);
+}
+
+/**
+ * Validate that a parsed assignment has all required roles and levels.
+ */
+function validateAssignment(assignment: Record<string, unknown>, fallbackModel: string): ModelAssignment | null {
+  const result: ModelAssignment = {};
+  for (const [roleId, config] of Object.entries(ROLE_REGISTRY)) {
+    const roleData = assignment[roleId] as Record<string, string> | undefined;
+    if (!roleData) {
+      // Backfill missing roles from the first available role or fallback
+      result[roleId] = {};
+      for (const level of config.levels) {
+        result[roleId][level] = fallbackModel;
+      }
+      continue;
+    }
+    result[roleId] = {};
+    for (const level of config.levels) {
+      if (!roleData[level]) {
+        console.error(`Missing ${roleId}.${level} in LLM assignment`);
+        return null;
+      }
+      result[roleId][level] = roleData[level];
+    }
+  }
+  return result;
+}
 
 /**
  * Use an LLM to intelligently select and assign models to DevClaw roles.
@@ -35,16 +75,12 @@ export async function selectModelsWithLLM(
 
   // If only one model, assign it to all roles
   if (availableModels.length === 1) {
-    const model = availableModels[0].model;
-    return {
-      developer: { junior: model, medior: model, senior: model },
-      tester: { junior: model, medior: model, senior: model },
-      architect: { junior: model, senior: model },
-    };
+    return singleModelAssignment(availableModels[0].model);
   }
 
   // Create a prompt for the LLM
   const modelList = availableModels.map((m) => m.model).join("\n");
+  const jsonExample = buildJsonExample();
 
   const prompt = `You are an AI model expert. Analyze the following authenticated AI models and assign them to DevClaw development roles based on their capabilities.
 
@@ -65,22 +101,7 @@ Rules:
 6. Stable versions (no date) > snapshot versions (with date like 20250514)
 
 Return ONLY a JSON object in this exact format (no markdown, no explanation):
-{
-  "developer": {
-    "junior": "provider/model-name",
-    "medior": "provider/model-name",
-    "senior": "provider/model-name"
-  },
-  "tester": {
-    "junior": "provider/model-name",
-    "medior": "provider/model-name",
-    "senior": "provider/model-name"
-  },
-  "architect": {
-    "junior": "provider/model-name",
-    "senior": "provider/model-name"
-  }
-}`;
+${jsonExample}`;
 
   try {
     const sessionId = sessionKey ?? "devclaw-model-selection";
@@ -127,28 +148,14 @@ Return ONLY a JSON object in this exact format (no markdown, no explanation):
     // Log what we got for debugging
     console.log("LLM returned:", JSON.stringify(assignment, null, 2));
 
-    // Validate the structure
-    // Backfill architect if LLM didn't return it (graceful upgrade)
-    if (!assignment.architect) {
-      assignment.architect = {
-        senior: assignment.developer?.senior ?? availableModels[0].model,
-        junior: assignment.developer?.medior ?? availableModels[0].model,
-      };
-    }
-
-    if (
-      !assignment.developer?.junior ||
-      !assignment.developer?.medior ||
-      !assignment.developer?.senior ||
-      !assignment.tester?.junior ||
-      !assignment.tester?.medior ||
-      !assignment.tester?.senior
-    ) {
+    // Validate and backfill
+    const validated = validateAssignment(assignment, availableModels[0].model);
+    if (!validated) {
       console.error("Invalid assignment structure. Got:", assignment);
       throw new Error(`Invalid assignment structure from LLM. Missing fields in: ${JSON.stringify(Object.keys(assignment))}`);
     }
 
-    return assignment as ModelAssignment;
+    return validated;
   } catch (err) {
     console.error("LLM model selection failed:", (err as Error).message);
     return null;

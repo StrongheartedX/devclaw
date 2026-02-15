@@ -5,7 +5,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { homedir } from "node:os";
-import { LEVEL_ALIASES, ROLE_ALIASES } from "./roles/index.js";
+import { migrateProject } from "./migrations.js";
+
 export type WorkerState = {
   active: boolean;
   issueId: string | null;
@@ -36,38 +37,6 @@ export type Project = {
 export type ProjectsData = {
   projects: Record<string, Project>;
 };
-
-function migrateLevel(level: string | null, role: string): string | null {
-  if (!level) return null;
-  return LEVEL_ALIASES[role]?.[level] ?? level;
-}
-
-function migrateSessions(
-  sessions: Record<string, string | null>,
-  role: string,
-): Record<string, string | null> {
-  const aliases = LEVEL_ALIASES[role];
-  if (!aliases) return sessions;
-
-  const migrated: Record<string, string | null> = {};
-  for (const [key, value] of Object.entries(sessions)) {
-    const newKey = aliases[key] ?? key;
-    migrated[newKey] = value;
-  }
-  return migrated;
-}
-
-function parseWorkerState(worker: Record<string, unknown>, role: string): WorkerState {
-  const level = (worker.level ?? worker.tier ?? null) as string | null;
-  const sessions = (worker.sessions as Record<string, string | null>) ?? {};
-  return {
-    active: worker.active as boolean,
-    issueId: worker.issueId as string | null,
-    startTime: worker.startTime as string | null,
-    level: migrateLevel(level, role),
-    sessions: migrateSessions(sessions, role),
-  };
-}
 
 /**
  * Create a blank WorkerState with null sessions for given level names.
@@ -105,36 +74,7 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
   const data = JSON.parse(raw) as ProjectsData;
 
   for (const project of Object.values(data.projects)) {
-    // Migrate old format: hardcoded dev/qa/architect fields → workers map
-    const raw = project as unknown as Record<string, unknown>;
-    if (!raw.workers && (raw.dev || raw.qa || raw.architect)) {
-      project.workers = {};
-      for (const role of ["dev", "qa", "architect"]) {
-        const canonical = ROLE_ALIASES[role] ?? role;
-        project.workers[canonical] = raw[role]
-          ? parseWorkerState(raw[role] as Record<string, unknown>, role)
-          : emptyWorkerState([]);
-      }
-      // Clean up old fields from the in-memory object
-      delete raw.dev;
-      delete raw.qa;
-      delete raw.architect;
-    } else if (raw.workers) {
-      // New format: parse each worker with role-aware migration
-      const workers = raw.workers as Record<string, Record<string, unknown>>;
-      project.workers = {};
-      for (const [role, worker] of Object.entries(workers)) {
-        // Migrate old role keys (dev→developer, qa→tester)
-        const canonical = ROLE_ALIASES[role] ?? role;
-        project.workers[canonical] = parseWorkerState(worker, role);
-      }
-    } else {
-      project.workers = {};
-    }
-
-    if (!project.channel) {
-      project.channel = "telegram";
-    }
+    migrateProject(project);
   }
 
   return data;

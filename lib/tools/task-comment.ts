@@ -11,10 +11,11 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
+import { getAllRoleIds, getFallbackEmoji } from "../roles/index.js";
 
-/** Valid author roles for attribution */
-const AUTHOR_ROLES = ["developer", "tester", "orchestrator"] as const;
-type AuthorRole = (typeof AUTHOR_ROLES)[number];
+/** Valid author roles for attribution — all registry roles + orchestrator */
+const AUTHOR_ROLES = [...getAllRoleIds(), "orchestrator"];
+type AuthorRole = string;
 
 export function createTaskCommentTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -73,7 +74,7 @@ Examples:
       const issue = await provider.getIssue(issueId);
 
       const commentBody = authorRole
-        ? `${ROLE_EMOJI[authorRole]} **${authorRole.toUpperCase()}**: ${body}`
+        ? `${getRoleEmoji(authorRole)} **${authorRole.toUpperCase()}**: ${body}`
         : body;
 
       await provider.addComment(issueId, commentBody);
@@ -99,8 +100,7 @@ Examples:
 // Private helpers
 // ---------------------------------------------------------------------------
 
-const ROLE_EMOJI: Record<AuthorRole, string> = {
-  developer: "👨‍💻",
-  tester: "🔍",
-  orchestrator: "🎛️",
-};
+function getRoleEmoji(role: string): string {
+  if (role === "orchestrator") return "🎛️";
+  return getFallbackEmoji(role);
+}
