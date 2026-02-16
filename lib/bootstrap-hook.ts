@@ -106,10 +106,14 @@ export async function loadRoleInstructions(
 export function registerBootstrapHook(api: OpenClawPluginApi): void {
   api.registerHook("agent:bootstrap", async (event) => {
     const sessionKey = event.sessionKey;
+    api.logger.debug(`Bootstrap hook fired: sessionKey=${sessionKey ?? "undefined"}, event keys=${Object.keys(event).join(",")}`);
     if (!sessionKey) return;
 
     const parsed = parseDevClawSessionKey(sessionKey);
-    if (!parsed) return;
+    if (!parsed) {
+      api.logger.debug(`Bootstrap hook: not a DevClaw session key: ${sessionKey}`);
+      return;
+    }
 
     const context = event.context as {
       workspaceDir?: string;
@@ -122,10 +126,16 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     };
 
     const workspaceDir = context.workspaceDir;
-    if (!workspaceDir || typeof workspaceDir !== "string") return;
+    if (!workspaceDir || typeof workspaceDir !== "string") {
+      api.logger.warn(`Bootstrap hook: no workspaceDir in context for ${sessionKey}`);
+      return;
+    }
 
     const bootstrapFiles = context.bootstrapFiles;
-    if (!Array.isArray(bootstrapFiles)) return;
+    if (!Array.isArray(bootstrapFiles)) {
+      api.logger.warn(`Bootstrap hook: no bootstrapFiles array in context for ${sessionKey}`);
+      return;
+    }
 
     const { content, source } = await loadRoleInstructions(
       workspaceDir,
@@ -134,7 +144,10 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
       { withSource: true },
     );
 
-    if (!content) return;
+    if (!content) {
+      api.logger.warn(`Bootstrap hook: no content found for ${parsed.role} in project "${parsed.projectName}" (workspace: ${workspaceDir})`);
+      return;
+    }
 
     // Inject as a virtual bootstrap file. OpenClaw includes these in the
     // agent's system prompt automatically (via buildBootstrapContextFiles).
@@ -148,5 +161,5 @@ export function registerBootstrapHook(api: OpenClawPluginApi): void {
     api.logger.info(
       `Bootstrap hook: injected ${parsed.role} instructions for project "${parsed.projectName}" from ${source}`,
     );
-  });
+  }, { name: "devclaw-worker-instructions", description: "Injects role-specific instructions into DevClaw worker sessions" } as any);
 }

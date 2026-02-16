@@ -35,6 +35,7 @@ export async function writePluginConfig(
   // Clean up legacy models from openclaw.json (moved to workflow.yaml)
   delete (config as any).plugins.entries.devclaw.config.models;
 
+  ensureInternalHooks(config);
   ensureHeartbeatDefaults(config);
   configureSubagentCleanup(config);
 
@@ -75,6 +76,13 @@ function addToolRestrictions(config: Record<string, unknown>, agentId: string): 
     agent.tools.deny = ["sessions_spawn", "sessions_send"];
     delete agent.tools.allow;
   }
+}
+
+function ensureInternalHooks(config: Record<string, unknown>): void {
+  if (!config.hooks) config.hooks = {};
+  const hooks = config.hooks as Record<string, unknown>;
+  if (!hooks.internal) hooks.internal = {};
+  (hooks.internal as Record<string, unknown>).enabled = true;
 }
 
 function ensureHeartbeatDefaults(config: Record<string, unknown>): void {
