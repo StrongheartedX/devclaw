@@ -4,9 +4,9 @@
  * Handles detection and migration of legacy projects.json format to new schema.
  * Separated from projects.ts to keep core logic clean.
  */
-import { execSync } from "node:child_process";
 import type { ProjectsData, Channel, LegacyProject, WorkerState } from "./projects.js";
 import { resolveRepoPath } from "./projects.js";
+import { runCommand } from "./run-command.js";
 
 /**
  * Detect if projects.json is in legacy format (keyed by numeric groupIds).
@@ -19,15 +19,14 @@ export function isLegacySchema(data: any): boolean {
 /**
  * Auto-populate repoRemote by reading git remote from the repo directory.
  */
-export function getRepoRemote(repoPath: string): string | undefined {
+export async function getRepoRemote(repoPath: string): Promise<string | undefined> {
   try {
     const resolved = resolveRepoPath(repoPath);
-    const remote = execSync("git remote get-url origin", {
+    const result = await runCommand(["git", "remote", "get-url", "origin"], {
+      timeoutMs: 5_000,
       cwd: resolved,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "ignore"],
-    }).trim();
-    return remote || undefined;
+    });
+    return result.stdout.trim() || undefined;
   } catch {
     return undefined;
   }
@@ -43,7 +42,7 @@ export function getRepoRemote(repoPath: string): string | undefined {
  *   Input: { "-5176490302": { name: "devclaw", ... }, "-1003843401024": { name: "devclaw", ... } }
  *   Output: { "devclaw": { slug: "devclaw", channels: [...], ... } }
  */
-export function migrateLegacySchema(data: any): ProjectsData {
+export async function migrateLegacySchema(data: any): Promise<ProjectsData> {
   const legacyProjects = data.projects as Record<string, LegacyProject>;
   const byName: Record<string, { groupIds: string[]; legacyProjects: LegacyProject[] }> = {};
 
@@ -88,7 +87,7 @@ export function migrateLegacySchema(data: any): ProjectsData {
       slug,
       name: projectName,
       repo: firstProj.repo,
-      repoRemote: getRepoRemote(firstProj.repo),
+      repoRemote: await getRepoRemote(firstProj.repo),
       groupName: firstProj.groupName,
       deployUrl: firstProj.deployUrl,
       baseBranch: firstProj.baseBranch,

@@ -12,6 +12,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { readProjects, writeProjects, emptyWorkerState } from "../projects.js";
 import { resolveRepoPath } from "../projects.js";
+import { runCommand } from "../run-command.js";
 import { createProvider } from "../providers/index.js";
 import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
@@ -160,12 +161,11 @@ export function createProjectRegisterTool() {
       // 5. Auto-detect repoRemote from git
       let repoRemote: string | undefined;
       try {
-        const { execSync } = require("node:child_process");
-        repoRemote = execSync("git remote get-url origin", {
+        const result = await runCommand(["git", "remote", "get-url", "origin"], {
+          timeoutMs: 5_000,
           cwd: repoPath,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "ignore"],
-        }).trim();
+        });
+        repoRemote = result.stdout.trim() || undefined;
       } catch {
         repoRemote = undefined;
       }

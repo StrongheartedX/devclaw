@@ -181,7 +181,7 @@ export async function readProjects(workspaceDir: string): Promise<ProjectsData> 
 
   // Auto-migrate legacy schema to new schema
   if (isLegacySchema(data)) {
-    data = migrateLegacySchema(data);
+    data = await migrateLegacySchema(data);
     // Write migrated schema back to disk
     await writeProjects(workspaceDir, data as ProjectsData);
   }
