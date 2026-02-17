@@ -111,7 +111,7 @@ const plugin = {
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (13 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (14 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };

@@ -117,15 +117,16 @@ DevClaw provides equivalent guardrails for everything except auto-reporting, whi
 
 ## Roles
 
-DevClaw ships with three built-in roles, defined in `lib/roles/registry.ts`. All roles use the same level scheme (junior/medior/senior) — levels describe task complexity, not the role.
+DevClaw ships with four built-in roles, defined in `lib/roles/registry.ts`. All roles use the same level scheme (junior/medior/senior) — levels describe task complexity, not the role.
 
 | Role | ID | Levels | Default Level | Completion Results |
 |---|---|---|---|---|
-| Developer | `developer` | junior, medior, senior | medior | done, review, blocked |
+| Developer | `developer` | junior, medior, senior | medior | done, blocked |
 | Tester | `tester` | junior, medior, senior | medior | pass, fail, refine, blocked |
 | Architect | `architect` | junior, senior | junior | done, blocked |
+| Reviewer | `reviewer` | junior, senior | junior | approve, reject, blocked |
 
-Roles are extensible — add a new entry to `ROLE_REGISTRY` and corresponding workflow states to get a new role. The `workflow.yaml` config can also override levels, models, and emoji per role, or disable a role entirely (`architect: false`).
+Roles are extensible — add a new entry to `ROLE_REGISTRY` and corresponding workflow states to get a new role. The `workflow.yaml` config can also override levels, models, and emoji per role, or disable a role entirely (`tester: false`).
 
 ## System overview
 
@@ -261,11 +262,11 @@ sequenceDiagram
     Note over DEV: Calls work_finish when done
 
     DEV->>DC: work_finish({ role: "developer", result: "done", ... })
-    DC->>GL: transition label "Doing" → "To Test"
+    DC->>GL: transition label "Doing" → "To Review"
     DC->>DC: deactivate worker (sessions preserved)
     DC-->>DEV: { announcement: "✅ DEVELOPER DONE #42" }
 
-    MS->>TG: "✅ DEVELOPER DONE #42 — moved to TESTER queue"
+    MS->>TG: "✅ DEVELOPER DONE #42 — moved to review queue"
     TG->>H: sees announcement
 ```
 
@@ -396,46 +397,45 @@ sequenceDiagram
     WF->>REPO: git pull
     WF->>PJ: deactivateWorker(-123, developer)
     Note over PJ: active→false, issueId→null<br/>sessions map PRESERVED
-    WF->>GL: transitionLabel "Doing" → "To Test"
+    WF->>GL: transitionLabel "Doing" → "To Review"
     WF->>AL: append { event: "work_finish", role: "developer", result: "done" }
 
     WF->>WF: tick queue (fill free slots)
-    Note over WF: Scheduler sees "To Test" issue, TESTER slot free → dispatches TESTER
+    Note over WF: Issue in "To Review", heartbeat will poll PR status
     WF-->>DEV: { announcement: "✅ DEVELOPER DONE #42", tickPickups: [...] }
 ```
 
 **Writes:**
 - `Git repo`: pulled latest (has DEVELOPER's merged code)
 - `projects.json`: workers.developer.active=false, issueId=null (sessions map preserved for reuse)
-- `Issue Tracker`: label "Doing" → "To Test"
+- `Issue Tracker`: label "Doing" → "To Review"
 - `audit.log`: 1 entry (work_finish) + tick entries if workers dispatched
 
-### Phase 5b: DEVELOPER requests review (alternative path)
+### Phase 5b: Review pass (heartbeat auto-transition)
 
-Instead of merging the PR themselves, a developer can leave it open for human review:
+The issue sits in "To Review" until the heartbeat's **review pass** detects the PR has been approved. DevClaw then auto-merges the PR, closes the issue, and transitions to Done. If the merge fails (e.g. conflicts) or the PR has unaddressed comments, the issue moves to "To Improve" where a developer is auto-dispatched to fix.
 
-```mermaid
-sequenceDiagram
-    participant DEV as DEVELOPER Session
-    participant WF as work_finish
-    participant GL as Issue Tracker
-    participant PJ as projects.json
+With agent review (`reviewPolicy: agent`), the heartbeat dispatches a reviewer worker instead. The reviewer checks the PR and calls `work_finish` with approve/reject.
 
-    DEV->>WF: work_finish({ role: "developer", result: "review", ... })
-    WF->>GL: transitionLabel "Doing" → "In Review"
-    WF->>PJ: deactivateWorker (sessions preserved)
-    WF-->>DEV: { announcement: "👀 DEVELOPER REVIEW #42" }
-```
+### Phase 6: Done (default) or TESTER pickup (test phase)
 
-The issue sits in "In Review" until the heartbeat's **review pass** detects the PR has been approved. DevClaw then auto-merges the PR and transitions to "To Test". If the merge fails (e.g. conflicts), the issue moves to "To Improve" where a developer is auto-dispatched to resolve conflicts.
+**Default flow (no test phase):** The issue is Done after PR approval + merge. No tester involved.
 
-### Phase 6: TESTER pickup
+**With test phase enabled:** Same as Phase 3, but with `role: "tester"`. Label transitions "To Test" → "Testing". Level selection determines which tester session is used.
 
-Same as Phase 3, but with `role: "tester"`. Label transitions "To Test" → "Testing". Level selection determines which tester session is used.
+### Phase 7: Review/test outcomes
 
-### Phase 7: TESTER result (4 possible outcomes)
+#### 7a. PR Approved (heartbeat auto-merge)
 
-#### 7a. TESTER Pass
+The heartbeat detects the PR is approved on GitHub/GitLab, merges it, pulls latest, closes the issue, and transitions to Done.
+
+**Ticket complete.** Issue closed, label "Done".
+
+#### 7b. PR Comments or Changes Requested
+
+The heartbeat detects unaddressed PR comments or a changes-requested review. Issue moves to "To Improve". Next heartbeat, DEVELOPER picks it up again.
+
+#### 7c. TESTER Pass (test phase only)
 
 ```mermaid
 sequenceDiagram
@@ -453,9 +453,7 @@ sequenceDiagram
     WF-->>TST: { announcement: "🎉 TESTER PASS #42. Issue closed." }
 ```
 
-**Ticket complete.** Issue closed, label "Done".
-
-#### 7b. TESTER Fail
+#### 7d. TESTER Fail (test phase only)
 
 ```mermaid
 sequenceDiagram
@@ -473,21 +471,12 @@ sequenceDiagram
     WF-->>TST: { announcement: "❌ TESTER FAIL #42 — OAuth redirect broken. Sent back to DEVELOPER." }
 ```
 
-**Cycle restarts:** Issue goes to "To Improve". Next heartbeat, DEVELOPER picks it up again (Phase 3, but from "To Improve" instead of "To Do").
-
-#### 7c. TESTER Refine
-
-```
-Label: "Testing" → "Refining"
-```
-
-Issue needs human decision. Pipeline pauses until human moves it to "To Do" or closes it.
-
-#### 7d. Blocked (DEVELOPER or TESTER)
+#### 7e. Blocked (any role)
 
 ```
 DEVELOPER Blocked: "Doing" → "Refining"
-TESTER Blocked:    "Testing" → "Refining"
+REVIEWER Blocked:  "Reviewing" → "Refining"
+TESTER Blocked:    "Testing" → "Refining"  (test phase only)
 ```
 
 Worker cannot complete (missing info, environment errors, etc.). Issue enters hold state for human decision. The human can move it back to "To Do" to retry or take other action.
@@ -520,7 +509,7 @@ sequenceDiagram
     SH-->>HB: { fixes applied }
 
     HB->>RV: reviewPass per project
-    Note over RV: Polls PR status for "In Review" issues
+    Note over RV: Polls PR status for "To Review" issues
     RV-->>HB: { transitions made }
 
     HB->>TK: projectTick per project
@@ -564,9 +553,9 @@ Every piece of data and where it lives:
 │ Issue Tracker (source of truth for tasks)                       │
 │                                                                 │
 │  Issue #42: "Add login page"                                    │
-│  Labels: [Planning | To Do | Doing | To Test | Testing | ...]   │
+│  Labels: [Planning | To Do | Doing | To Review | Reviewing | ...]│
 │  State: open / closed                                           │
-│  PRs: linked pull/merge requests (status polled for In Review)  │
+│  PRs: linked pull/merge requests (status polled for To Review)  │
 │  Created by: orchestrator (task_create), workers, or humans     │
 └─────────────────────────────────────────────────────────────────┘
         ↕ gh/glab CLI (read/write, auto-detected)
@@ -586,6 +575,7 @@ Every piece of data and where it lives:
 │  research_task  → architect dispatch                            │
 │                                                                 │
 │  Bootstrap hook → injects role instructions into worker sessions│
+│  workflow_guide → config reference for workflow changes           │
 │  Review pass    → polls PR status, auto-merges approved PRs     │
 │  Config loader  → three-layer merge + Zod validation            │
 └─────────────────────────────────────────────────────────────────┘
@@ -703,7 +693,7 @@ All issue tracker operations go through the `IssueProvider` interface, defined i
 - `listIssuesByLabel` / `getIssue` — issue queries
 - `transitionLabel` — atomic label state transition (unlabel + label)
 - `closeIssue` / `reopenIssue` — issue lifecycle
-- `getPrStatus` — get PR/MR state (open, merged, approved, none)
+- `getPrStatus` — get PR/MR state (open, approved, changes_requested, has_comments, merged, closed)
 - `getMergedMRUrl` — MR/PR verification
 - `addComment` — add comment to issue
 - `healthCheck` — verify provider connectivity

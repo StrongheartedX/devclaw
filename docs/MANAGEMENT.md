@@ -30,10 +30,10 @@ Classical management theory — later formalized by Bernard Bass in his work on 
 
 DevClaw's task lifecycle is built on this. The orchestrator delegates a task via `work_start`, then steps away. It only re-engages in specific scenarios:
 
-1. **DEVELOPER completes work** → The label moves to `To Test`. The scheduler dispatches TESTER on the next tick. No orchestrator involvement needed.
-2. **DEVELOPER requests review** → The label moves to `In Review`. The heartbeat polls PR status. When merged, the scheduler dispatches TESTER. No orchestrator involvement needed.
-3. **TESTER passes** → The issue closes. Pipeline complete.
-4. **TESTER fails** → The label moves to `To Improve`. The scheduler dispatches DEVELOPER on the next tick. The orchestrator may need to adjust the level.
+1. **DEVELOPER completes work** → The label moves to `To Review`. The heartbeat polls PR status. No orchestrator involvement needed.
+2. **PR is approved** → The heartbeat auto-merges the PR, closes the issue, and transitions to Done. Pipeline complete. (Or to `To Test` if the test phase is enabled.)
+3. **PR has issues** → Comments or changes-requested reviews move the issue to `To Improve`. The scheduler dispatches DEVELOPER on the next tick.
+4. **TESTER passes** (test phase only) → The issue closes. Pipeline complete.
 5. **Any role is blocked** → The task enters `Refining` — a holding state that _requires human decision_. This is the explicit escalation boundary.
 
 The "Refining" state is the most interesting from a delegation perspective. It's a conscious architectural decision that says: some judgments should not be automated. When a TESTER determines that a task needs rethinking rather than just fixing, or when a DEVELOPER hits an obstacle that requires business context, it escalates to the only actor who has the full picture — the human.
@@ -44,16 +44,15 @@ This is textbook MBE. The person behind the keyboard isn't monitoring every task
 
 Henry Mintzberg's work on organizational structure identified five coordination mechanisms. The one most relevant to DevClaw is **standardization of work processes** — when coordination happens not through direct supervision but through predetermined procedures that everyone follows.
 
-DevClaw enforces a configurable but consistent lifecycle for every task. The default workflow:
+DevClaw enforces a configurable but consistent lifecycle for every task. The default workflow (human review, no test phase):
 
 ```
-Planning → To Do → Doing → To Test → Testing → Done
-                         ↘ In Review → (PR approved → auto-merge) → To Test
-                                    ↘ To Improve → Doing (merge conflict / fix cycle)
-                                    ↘ Refining → (human decision)
+Planning → To Do → Doing → To Review → PR approved → Done (auto-merge + close)
+                                      → PR comments/changes → To Improve → Doing (fix cycle)
+                                      → Refining → (human decision)
 ```
 
-The ARCHITECT role is tool-triggered only via `research_task` — no queue states. Issues go directly to Planning, the architect researches and posts findings, then the issue stays in Planning for human review.
+The test phase (To Test → Testing → Done) can be enabled in `workflow.yaml` for automated QA after review. The ARCHITECT role is tool-triggered only via `research_task` — no queue states. Issues go directly to Planning, the architect researches and posts findings, then the issue stays in Planning for human review.
 
 Every label transition, state update, and audit log entry happens atomically inside the plugin. The orchestrator agent cannot skip a step, forget a label, or corrupt session state — because those operations are deterministic code, not instructions an LLM follows imperfectly.
 
@@ -65,11 +64,11 @@ One of the most common delegation failures is self-review. You don't ask the per
 
 DevClaw enforces structural separation between development and review by design:
 
-- DEVELOPER and TESTER are separate sub-agent sessions with separate state.
-- TESTER can use a different model entirely (e.g. senior for security reviews, junior for smoke tests), introducing genuine independence.
-- The review happens after a clean label transition — TESTER picks up from `To Test`, not from watching DEVELOPER work in real time.
+- DEVELOPER and REVIEWER/TESTER are separate sub-agent sessions with separate state.
+- Reviewers and testers can use different models entirely, introducing genuine independence.
+- Review happens after a clean label transition — the PR is checked in `To Review`, not by watching DEVELOPER work in real time.
 
-For higher-stakes changes, the DEVELOPER can submit a PR for human review (`result: "review"`). The issue enters `In Review` and the heartbeat polls the PR until it's merged — only then does TESTER receive the work. This adds a human checkpoint without breaking the automated flow.
+By default, all PRs go through human review — the heartbeat polls PR status on GitHub/GitLab and auto-merges when approved. With `reviewPolicy: agent`, an AI reviewer checks every PR. With the optional test phase enabled, a TESTER additionally validates the merged code before closing.
 
 This mirrors a principle from organizational design: effective controls require independence between execution and verification. It's the same reason companies separate their audit function from their operations.
 

@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all 14 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -72,11 +72,13 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 
 | Role | Result | Label transition | Side effects |
 |---|---|---|---|
-| developer | `"done"` | Doing → To Test | git pull, auto-detect PR URL |
-| developer | `"review"` | Doing → In Review | auto-detect PR URL, heartbeat polls for merge |
+| developer | `"done"` | Doing → To Review | auto-detect PR URL. Heartbeat polls PR status. |
 | developer | `"blocked"` | Doing → Refining | Awaits human decision |
-| tester | `"pass"` | Testing → Done | Issue closed |
-| tester | `"fail"` | Testing → To Improve | Issue reopened |
+| reviewer | `"approve"` | Reviewing → Done | merge PR, git pull, close issue |
+| reviewer | `"reject"` | Reviewing → To Improve | Sent back to developer |
+| reviewer | `"blocked"` | Reviewing → Refining | Awaits human decision |
+| tester | `"pass"` | Testing → Done | Issue closed (only when test phase enabled) |
+| tester | `"fail"` | Testing → To Improve | Issue reopened (only when test phase enabled) |
 | tester | `"refine"` | Testing → Refining | Awaits human decision |
 | tester | `"blocked"` | Testing → Refining | Awaits human decision |
 | architect | `"done"` | stays in Planning | Design complete, ready for human review |
@@ -92,7 +94,7 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 6. Ticks queue to fill free worker slots
 7. Writes audit log
 
-**Scheduling:** After completion, `work_finish` ticks the queue. The scheduler sees the new label (`To Test` or `To Improve`) and dispatches the next worker if a slot is free.
+**Scheduling:** After completion, `work_finish` ticks the queue. The scheduler sees the new label (`To Review` or `To Improve`) and dispatches the next worker if a slot is free.
 
 ---
 
@@ -140,7 +142,7 @@ Change an issue's state label manually without going through the full pickup/com
 | `state` | StateLabel | Yes | New state label |
 | `reason` | string | No | Audit log reason for the change |
 
-**Valid states:** `Planning`, `To Do`, `Doing`, `To Test`, `Testing`, `Done`, `To Improve`, `Refining`, `In Review`
+**Valid states:** `Planning`, `To Do`, `Doing`, `To Review`, `Reviewing`, `Done`, `To Improve`, `Refining` (and `To Test`, `Testing` if test phase enabled)
 
 **Use cases:**
 
@@ -173,6 +175,27 @@ Add a comment to an issue for feedback, notes, or discussion.
 
 When `authorRole` is provided, the comment is prefixed with a role emoji and attribution label.
 
+### `task_edit_body`
+
+Update issue title and/or description. Only allowed when the issue is in the initial workflow state (e.g. "Planning") or an active architect state (e.g. "Researching"). Prevents editing in-progress work.
+
+**Source:** [`lib/tools/task-edit-body.ts`](../lib/tools/task-edit-body.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `projectSlug` | string | Yes | Project slug |
+| `issueId` | number | Yes | Issue ID to edit |
+| `title` | string | No | New title for the issue |
+| `body` | string | No | New body/description for the issue |
+| `reason` | string | No | Why the edit was made (for audit trail) |
+| `addComment` | boolean | No | Post an auto-comment noting the edit. Default: `true`. |
+
+At least one of `title` or `body` must be provided.
+
+**Audit:** Logs the edit with timestamp, caller, and a diff summary. Optionally posts an auto-comment on the issue for traceability.
+
 ---
 
 ## Operations
@@ -194,7 +217,8 @@ Lightweight queue + worker state dashboard.
 **Returns per project:**
 
 - Worker state per role: active/idle, current issue, level, start time
-- Queue counts: To Do, To Test, To Improve
+- Queue counts: To Do, To Review, To Improve (and To Test if test phase enabled)
+- Active workflow summary: review policy, test phase status, state flow
 - Role execution mode
 
 ---
@@ -244,8 +268,8 @@ Manual trigger for heartbeat: health fix + review polling + queue dispatch. Same
 **Three-pass sweep:**
 
 1. **Health pass** — Runs `checkWorkerHealth` per project per role. Auto-fixes zombies, stale workers, orphaned state.
-2. **Review pass** — Polls PR status for issues in "In Review" state. Auto-merges and transitions to "To Test" when PR is approved. If merge fails (conflicts), transitions to "To Improve" for developer to fix.
-3. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Test > To Do).
+2. **Review pass** — Polls PR status for issues in "To Review" state. Auto-merges and transitions to Done (or "To Test" if test phase enabled) when PR is approved. PR comments or changes-requested reviews transition to "To Improve".
+3. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Review > To Do).
 
 **Execution guards:**
 
@@ -331,6 +355,28 @@ Conversational onboarding guide. Returns step-by-step instructions for the agent
 
 ---
 
+### `workflow_guide`
+
+Reference guide for workflow configuration. Call before making any workflow changes.
+
+**Source:** [`lib/tools/workflow-guide.ts`](../lib/tools/workflow-guide.ts)
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `topic` | string | No | Narrow to: `overview`, `states`, `roles`, `review`, `testing`, `timeouts`, `overrides`. Omit for full guide. |
+
+**Returns:** Comprehensive documentation about the workflow config structure, valid values (enums vs free-form), config layer system, and common customization recipes.
+
+**Use cases:**
+
+- User asks to change review policy → call `workflow_guide` first, then edit `workflow.yaml`
+- User asks to enable test phase → call `workflow_guide("testing")` for step-by-step
+- User asks about config options → call `workflow_guide("overview")` for the full picture
+
+---
+
 ### `research_task`
 
 Spawn an architect for a design investigation. Creates a Planning issue with rich context and dispatches an architect worker. No queue states — tool-triggered only.
@@ -351,26 +397,43 @@ Spawn an architect for a design investigation. Creates a Planning issue with ric
 
 ## Completion Rules Reference
 
-The pipeline service (`lib/services/pipeline.ts`) derives completion rules from the workflow config:
+The pipeline service (`lib/services/pipeline.ts`) derives completion rules from the workflow config.
+
+**Default flow (human review, no test phase):**
 
 ```
-developer:done    → Doing     → To Test      (git pull, detect PR)
-developer:review  → Doing     → In Review    (detect PR, heartbeat polls for merge)
+developer:done    → Doing     → To Review    (detect PR, heartbeat polls PR status)
 developer:blocked → Doing     → Refining     (awaits human decision)
+reviewer:approve  → Reviewing → Done         (merge PR, git pull, close issue)
+reviewer:reject   → Reviewing → To Improve   (sent back to developer)
+reviewer:blocked  → Reviewing → Refining     (awaits human decision)
+architect:done    → stays in Planning          (design complete, ready for human review)
+architect:blocked → Planning  → Refining      (awaits human decision)
+```
+
+**With test phase enabled:**
+
+```
 tester:pass       → Testing   → Done         (close issue)
 tester:fail       → Testing   → To Improve   (reopen issue)
 tester:refine     → Testing   → Refining     (awaits human decision)
 tester:blocked    → Testing   → Refining     (awaits human decision)
-architect:done    → stays in Planning          (design complete, ready for human review)
-architect:blocked → Planning → Refining       (awaits human decision)
+```
+
+**Heartbeat auto-transitions (on "To Review" state):**
+
+```
+PR approved       → To Review → Done         (merge PR, git pull, close issue)
+PR comments       → To Review → To Improve   (developer fixes)
+Merge conflict    → To Review → To Improve   (developer resolves)
 ```
 
 ## Issue Priority Order
 
 When the heartbeat or `work_heartbeat` fills free worker slots, issues are prioritized:
 
-1. **To Improve** — Tester failures get fixed first (highest priority)
-2. **To Test** — Completed developer work gets reviewed next
+1. **To Improve** — Review failures get fixed first (highest priority)
+2. **To Review** — Completed developer work awaits review (priority 2)
 3. **To Do** — Fresh tasks are picked up last
 
 This ensures the pipeline clears its backlog before starting new work.

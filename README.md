@@ -31,12 +31,11 @@ You have two projects in two Telegram groups. You go to bed. You wake up:
 ── Group: "Dev - My Webapp" ──────────────────────────────
 
 Agent:  "⚡ Sending DEV (medior) for #42: Add login page"
-Agent:  "✅ DEV DONE #42 — Login page with OAuth. Moved to QA."
-Agent:  "🔍 Sending QA (reviewer) for #42: Add login page"
-Agent:  "🎉 QA PASS #42. Issue closed."
+Agent:  "✅ DEV DONE #42 — Login page with OAuth. PR opened for review."
+Agent:  "🔀 PR approved for #42 — auto-merged. Issue closed."
 Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
-Agent:  "✅ DEV DONE #43 — Updated to brand blue. Moved to QA."
-Agent:  "❌ QA FAIL #43 — Color doesn't match dark mode. Back to DEV."
+Agent:  "✅ DEV DONE #43 — Updated to brand blue. PR opened for review."
+Agent:  "🔄 PR changes requested for #43 — Back to DEV."
 Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
 
   You:  "Create an issue for refactoring the profile page, pick it up."
@@ -44,18 +43,18 @@ Agent:  "⚡ Sending DEV (junior) for #43: Fix button color on /settings"
 Agent:  created #44 "Refactor user profile page" on GitHub — To Do
 Agent:  "⚡ Sending DEV (medior) for #44: Refactor user profile page"
 
-Agent:  "✅ DEV DONE #43 — Fixed dark-mode color. Back to QA."
-Agent:  "🎉 QA PASS #43. Issue closed."
+Agent:  "✅ DEV DONE #43 — Fixed dark-mode color. PR opened for review."
+Agent:  "🔀 PR approved for #43 — auto-merged. Issue closed."
 
 ── Group: "Dev - My API" ─────────────────────────────────
 
 Agent:  "🧠 Spawning DEV (senior) for #18: Migrate auth to OAuth2"
-Agent:  "✅ DEV DONE #18 — OAuth2 provider with refresh tokens. Moved to QA."
-Agent:  "🎉 QA PASS #18. Issue closed."
+Agent:  "✅ DEV DONE #18 — OAuth2 provider with refresh tokens. PR opened for review."
+Agent:  "🔀 PR approved for #18 — auto-merged. Issue closed."
 Agent:  "⚡ Sending DEV (medior) for #19: Add rate limiting to /api/search"
 ```
 
-Multiple issues shipped, a QA failure automatically retried, and a second project's migration completed — all while you slept. When you dropped in mid-stream to create an issue, the scheduler kept going before, during, and after.
+Multiple issues shipped, a PR review round-trip automatically handled, and a second project's migration completed — all while you slept. When you dropped in mid-stream to create an issue, the scheduler kept going before, during, and after.
 
 ---
 
@@ -63,9 +62,9 @@ Multiple issues shipped, a QA failure automatically retried, and a second projec
 
 ### Autonomous multi-project development
 
-Each project is fully isolated — own queue, workers, sessions, and state. DEV and QA execute in parallel within each project, and multiple projects run simultaneously. A token-free scheduling engine drives it all autonomously:
+Each project is fully isolated — own queue, workers, sessions, and state. Workers execute in parallel within each project, and multiple projects run simultaneously. A token-free scheduling engine drives it all autonomously:
 
-- **[Scheduling engine](#automatic-scheduling)** — `work_heartbeat` continuously scans queues, dispatches workers, and drives DEV → QA → DEV [feedback loops](#how-tasks-flow-between-roles)
+- **[Scheduling engine](#automatic-scheduling)** — `work_heartbeat` continuously scans queues, dispatches workers, and drives DEV → review → DEV [feedback loops](#how-tasks-flow-between-roles)
 - **[Project isolation](#execution-modes)** — parallel workers per project, parallel projects across the system
 - **[Role instructions](#custom-instructions-per-project)** — per-project, per-role prompts injected at dispatch time
 
@@ -75,7 +74,7 @@ GitHub/GitLab issues are the single source of truth — not an internal database
 
 - **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
 - **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
-- **[Tool-based guardrails](#the-toolbox)** — 11 tools enforce the process; the agent provides intent, the plugin handles mechanics
+- **[Tool-based guardrails](#the-toolbox)** — 14 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
 ### ~60-80% token savings
 
@@ -120,12 +119,27 @@ When a task comes in, you don't configure `anthropic/claude-sonnet-4-5` — you 
 | **Medior** | Features, bug fixes, multi-file changes | Sonnet |
 | **Senior** | Architecture, migrations, system-wide refactoring | Opus |
 
-### QA
+### Reviewers
 
 | Level | Assigns to | Model |
 |---|---|---|
-| **Reviewer** | Code review, test validation, PR inspection | Sonnet |
-| **Tester** | Manual testing, smoke tests | Haiku |
+| **Junior** | Standard code review, PR inspection | Sonnet |
+| **Senior** | Thorough security review, complex edge cases | Opus |
+
+### Testers (optional — enable in workflow.yaml)
+
+| Level | Assigns to | Model |
+|---|---|---|
+| **Junior** | Quick smoke tests, basic checks | Haiku |
+| **Medior** | Standard test validation | Sonnet |
+| **Senior** | Thorough QA, complex edge cases | Opus |
+
+### Architects
+
+| Level | Assigns to | Model |
+|---|---|---|
+| **Junior** | Standard design investigation | Sonnet |
+| **Senior** | Complex architecture decisions | Opus |
 
 A CSS typo gets the intern. A database migration gets the architect. You're not burning Opus tokens on a color change, and you're not sending Haiku to redesign your auth system.
 
@@ -138,7 +152,7 @@ Every mapping is [configurable](docs/CONFIGURATION.md#model-tiers) — swap in a
 Every issue follows the same path, no exceptions. DevClaw enforces it:
 
 ```
-Planning → To Do → Doing → To Test → Testing → Done
+Planning → To Do → Doing → To Review → PR approved → Done (auto-merge + close)
 ```
 
 ```mermaid
@@ -147,18 +161,18 @@ stateDiagram-v2
     Planning --> ToDo: Ready for development
 
     ToDo --> Doing: DEV picks up
-    Doing --> ToTest: DEV done
-
-    ToTest --> Testing: Scheduler picks up QA
-    Testing --> Done: QA pass (issue closed)
-    Testing --> ToImprove: QA fail (back to DEV)
-    Testing --> Refining: QA needs human input
-
-    ToImprove --> Doing: Scheduler picks up DEV fix
+    Doing --> ToReview: DEV done (opens PR)
+    Doing --> Refining: DEV blocked
     Refining --> ToDo: Human decides
+
+    ToReview --> Done: PR approved (auto-merge + close)
+    ToReview --> ToImprove: Changes requested / merge conflict
+    ToImprove --> Doing: Scheduler picks up DEV fix
 
     Done --> [*]
 ```
+
+By default, PRs go through **human review** on GitHub/GitLab. The heartbeat polls for approvals and auto-merges. You can switch to agent review or enable an [optional test phase](docs/WORKFLOW.md#test-phase-optional) in `workflow.yaml`.
 
 These labels live on your actual GitHub/GitLab issues. Not in some internal database — in the tool you already use. Filter by `Doing` in GitHub to see what's in progress. Set up a webhook on `Done` to trigger deploys. The issue tracker is the source of truth.
 
@@ -183,12 +197,29 @@ If step 4 fails, step 3 is rolled back. No half-states, no orphaned labels, no "
 
 When a developer finishes, they call `work_finish` directly — no orchestrator involved:
 
-- **DEV "done"** → label moves to `To Test`, scheduler picks up QA on next tick
+- **DEV "done"** → label moves to `To Review`, PR goes through human review
 - **DEV "blocked"** → label moves back to `To Do`, task returns to queue
-- **QA "pass"** → label moves to `Done`, issue closes
-- **QA "fail"** → label moves to `To Improve`, scheduler picks up DEV on next tick
+- **PR approved** → heartbeat auto-merges, label moves to `Done`, issue closes
+- **PR changes requested** → label moves to `To Improve`, scheduler picks up DEV on next tick
+
+With the optional test phase enabled, an additional QA cycle runs before closing:
+- **TESTER "pass"** → `Done`, issue closes
+- **TESTER "fail"** → `To Improve`, back to DEV
 
 The orchestrator doesn't need to poll, check, or coordinate. Workers are self-reporting.
+
+### Research tasks follow a separate path
+
+Not every task is code. Sometimes you need investigation before implementation — "how should we migrate to OAuth2?", "what's the best caching strategy?", "audit the API for security issues."
+
+The `research_task` tool spawns an architect worker on a separate track:
+
+1. Creates a Planning issue with rich context
+2. Dispatches an architect (junior = Sonnet, senior = Opus)
+3. Architect researches and posts findings as issue comments
+4. Completes with `done` (stays in Planning for human review) or `blocked` (→ Refining)
+
+No queue states, no PR, no review cycle — just research → findings → human decision. The issue stays in Planning so you can read the findings and decide what to do next (create implementation tasks, refine the approach, etc.).
 
 ### Sessions accumulate context
 
@@ -212,14 +243,15 @@ Full trace of every task, every level selection, every label transition, every h
 
 ## Automatic scheduling
 
-DevClaw doesn't wait for you to tell it what to do next. A background scheduling system continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code. This is the engine that keeps the pipeline moving: when DEV finishes, the scheduler sees a `To Test` issue and dispatches QA. When QA fails, the scheduler sees a `To Improve` issue and dispatches DEV. No hand-offs, no orchestrator reasoning — just label-driven scheduling.
+DevClaw doesn't wait for you to tell it what to do next. A background scheduling system continuously scans for available work and dispatches workers — zero LLM tokens, pure deterministic code. This is the engine that keeps the pipeline moving: when DEV finishes, the PR goes through review. When review feedback comes back, the scheduler dispatches DEV to fix it. No hand-offs, no orchestrator reasoning — just label-driven scheduling.
 
 ### The `work_heartbeat`
 
 Every tick (default: 60 seconds), the scheduler runs two passes:
 
 1. **Health pass** — detects workers stuck for >2 hours, reverts their labels back to queue, deactivates them. Catches crashed sessions, context overflows, or workers that died without reporting back.
-2. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Test` > `To Do`), fills free worker slots. DEV and QA slots are filled independently.
+2. **Review pass** — polls open PRs in `To Review` state. Auto-merges when approved, dispatches DEV fix when changes requested or merge conflict detected.
+3. **Queue pass** — scans for available tasks by priority (`To Improve` > `To Review` > `To Do`), fills free worker slots.
 
 All CLI calls and JSON reads. Workers only consume tokens when they actually start coding or reviewing. The heartbeat scheduler runs at regular intervals to pick up new tasks.
 
@@ -227,10 +259,10 @@ All CLI calls and JSON reads. Workers only consume tokens when they actually sta
 
 When a worker calls `work_finish`, the plugin transitions the label. The scheduler picks up the rest:
 
-- **DEV "done"** → label moves to `To Test` → next tick dispatches QA
-- **QA "fail"** → label moves to `To Improve` → next tick dispatches DEV (reuses previous level)
-- **QA "pass"** → label moves to `Done`, issue closes
-- **"blocked"** → label reverts to queue (`To Do` or `To Test`) for retry
+- **DEV "done"** → label moves to `To Review` → heartbeat polls PR status → auto-merges on approval
+- **PR changes requested** → label moves to `To Improve` → next tick dispatches DEV (reuses previous level)
+- **PR approved** → auto-merge → label moves to `Done`, issue closes
+- **"blocked"** → label reverts to queue (`To Do`) for retry
 
 No orchestrator involvement. Workers self-report, the scheduler fills free slots.
 
@@ -238,7 +270,7 @@ No orchestrator involvement. Workers self-report, the scheduler fills free slots
 
 Each project is fully isolated — its own queue, workers, sessions, state. No cross-project contamination. Two levels of parallelism control how work gets scheduled:
 
-- **Project-level (`roleExecution`)** — DEV and QA work simultaneously on different tasks (default: `parallel`) or take turns (`sequential`)
+- **Project-level (`roleExecution`)** — different roles work simultaneously on different tasks (default: `parallel`) or take turns (`sequential`)
 - **Plugin-level (`projectExecution`)** — all registered projects dispatch workers independently (default: `parallel`) or only one project runs at a time (`sequential`)
 
 ### Configuration
@@ -281,7 +313,7 @@ Per-project settings live in `projects.json`:
 | `work_heartbeat.intervalSeconds` | `openclaw.json` | `60` | Seconds between ticks |
 | `work_heartbeat.maxPickupsPerTick` | `openclaw.json` | `4` | Max workers dispatched per tick |
 | `projectExecution` | `openclaw.json` | `"parallel"` | All projects at once, or one at a time |
-| `roleExecution` | `projects.json` | `"parallel"` | DEV+QA at once, or one role at a time |
+| `roleExecution` | `projects.json` | `"parallel"` | All roles at once, or one role at a time |
 
 See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
@@ -291,7 +323,7 @@ See the [Configuration reference](docs/CONFIGURATION.md) for the full schema.
 
 ### Your issues stay in your tracker
 
-DevClaw doesn't have its own task database. All task state lives in **GitHub Issues** or **GitLab Issues** — auto-detected from your git remote. The eight pipeline labels are created on your repo when you register a project. Your project manager sees progress in GitHub without knowing DevClaw exists. Your CI/CD can trigger on label changes. If you stop using DevClaw, your issues and labels stay exactly where they are.
+DevClaw doesn't have its own task database. All task state lives in **GitHub Issues** or **GitLab Issues** — auto-detected from your git remote. Pipeline labels are created on your repo when you register a project. Your project manager sees progress in GitHub without knowing DevClaw exists. Your CI/CD can trigger on label changes. If you stop using DevClaw, your issues and labels stay exactly where they are.
 
 The provider is pluggable (`IssueProvider` interface). GitHub and GitLab work today. Jira, Linear, or anything else just needs to implement the same interface.
 
@@ -317,16 +349,22 @@ Workers can also comment during work — QA leaves review feedback, DEV posts im
 Each project gets instruction files that workers receive with every task they pick up:
 
 ```
-workspace/projects/roles/
-├── my-webapp/
-│   ├── dev.md     "Run npm test before committing. Deploy URL: staging.example.com"
-│   └── qa.md      "Check OAuth flow. Verify mobile responsiveness."
-├── my-api/
-│   ├── dev.md     "Run cargo test. Follow REST conventions in CONTRIBUTING.md"
-│   └── qa.md      "Verify all endpoints return correct status codes."
-└── default/
-    ├── dev.md     (fallback for projects without custom instructions)
-    └── qa.md
+devclaw/
+├── workflow.yaml                     (workspace-level workflow overrides)
+├── prompts/                          (workspace defaults — fallback)
+│   ├── developer.md
+│   ├── tester.md
+│   └── architect.md
+└── projects/
+    ├── my-webapp/
+    │   ├── workflow.yaml             (project-specific workflow overrides)
+    │   └── prompts/
+    │       ├── developer.md   "Run npm test before committing. Deploy URL: staging.example.com"
+    │       └── tester.md      "Check OAuth flow. Verify mobile responsiveness."
+    └── my-api/
+        └── prompts/
+            ├── developer.md   "Run cargo test. Follow REST conventions in CONTRIBUTING.md"
+            └── tester.md      "Verify all endpoints return correct status codes."
 ```
 
 Deployment steps, test commands, coding standards, acceptance criteria — all injected at dispatch time, per project, per role.
@@ -368,7 +406,7 @@ All implementation work flows through the issue → worker pipeline:
 
 3. **Parallelization** — While workers code, the orchestrator stays free to handle new requests, answer questions, create more issues. No bottleneck.
 
-4. **QA pipeline** — Code goes through review before merging. Skip the worker pipeline, skip QA.
+4. **Review pipeline** — Code goes through review before merging. Skip the worker pipeline, skip review.
 
 5. **Session reuse** — Workers accumulate codebase context over multiple tasks. The orchestrator starting fresh every time wastes tokens.
 
@@ -413,16 +451,16 @@ You:   "Use this one"
 Agent: "Want to bind a messaging channel?"
 You:   "Telegram"
 
-Agent: "Here are the default developer assignments:
-        Junior → Haiku, Medior → Sonnet, Senior → Opus
-        Reviewer → Sonnet, Tester → Haiku
+Agent: "Here are the default model assignments:
+        Developer: Junior → Haiku, Medior → Sonnet, Senior → Opus
+        Reviewer: Junior → Sonnet, Senior → Opus
         Keep these or customize?"
 You:   "Keep them"
 
 Agent: "Done. Want to register a project?"
 You:   "Yes — my-app at ~/git/my-app, main branch"
 
-Agent: "Project registered. 8 labels created on your repo.
+Agent: "Project registered. Labels created on your repo.
         Role instructions scaffolded. Try: 'check the queue'"
 ```
 
@@ -432,7 +470,7 @@ You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#st
 
 ## The toolbox
 
-DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
+DevClaw gives the orchestrator 14 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
 | Tool | What it does |
 |---|---|
@@ -442,12 +480,15 @@ DevClaw gives the orchestrator 11 tools. These aren't just convenience wrappers 
 | `task_update` | Manually change an issue's state label |
 | `task_comment` | Add a comment to an issue (with role attribution) |
 | `task_edit_body` | Edit issue title/description (initial state only; audit-logged) |
-| `status` | Dashboard: queue counts + who's working on what |
+| `status` | Dashboard: queue counts + active workflow + who's working on what |
 | `health` | Detect zombie workers, stale sessions, state inconsistencies |
 | `work_heartbeat` | Manually trigger a health check + queue dispatch cycle |
 | `project_register` | One-time project setup: creates labels, scaffolds instructions, initializes state |
 | `setup` | Agent + workspace initialization |
 | `onboard` | Conversational setup guide |
+| `research_task` | Spawn an architect for design investigation — creates issue, dispatches worker |
+| `autoconfigure_models` | LLM-powered model selection based on available models |
+| `workflow_guide` | Configuration reference for workflow.yaml (call before editing) |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
@@ -458,10 +499,10 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 | | |
 |---|---|
 | **[Architecture](docs/ARCHITECTURE.md)** | System design, session model, data flow, end-to-end diagrams |
-| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 11 tools |
-| **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, heartbeat, notifications |
+| **[Workflow](docs/WORKFLOW.md)** | State machine, review policies, optional test phase |
+| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 14 tools |
+| **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, roles, timeouts |
 | **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
-| **[QA Workflow](docs/QA_WORKFLOW.md)** | QA process and review templates |
 | **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
 | **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
 | **[Roadmap](docs/ROADMAP.md)** | What's coming next |

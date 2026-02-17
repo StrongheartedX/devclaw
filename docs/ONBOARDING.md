@@ -154,7 +154,7 @@ Go to the Telegram/WhatsApp group for the project and tell the orchestrator agen
 
 The agent calls `project_register`, which atomically:
 - Validates the repo and auto-detects GitHub/GitLab from remote
-- Creates all 11 state labels (idempotent)
+- Creates all state labels (idempotent)
 - Scaffolds role instruction files (`devclaw/projects/<project>/prompts/developer.md`, `tester.md`, `architect.md`)
 - Adds the project entry to `projects.json`
 - Logs the registration event
@@ -224,6 +224,21 @@ The agent should call `status` and report the "To Do" issue. Then:
 > "Pick up issue #1 for developer"
 
 The agent calls `work_start`, which assigns a level, transitions the label to "Doing", creates or reuses a worker session, and dispatches the task — all in one call. The agent posts the announcement.
+
+## Step 7: Understand the workflow
+
+Your workflow is set up with **human review** and **no test phase** by default:
+
+```
+Planning → To Do → Doing → To Review → PR approved → Done (auto-merge + close)
+```
+
+You can customize this at any time:
+- **Review policy**: Change to `agent` (AI reviewer) or `auto` (hybrid) in `workflow.yaml`
+- **Test phase**: Enable automated QA after review — see [Workflow](WORKFLOW.md#test-phase-optional)
+- **Per-project overrides**: Create a project-specific `workflow.yaml` — see [Configuration](CONFIGURATION.md#three-layer-config-resolution)
+
+Ask the orchestrator "change the review policy" or "enable the test phase" and it will walk you through it using the `workflow_guide` tool.
 
 ## Adding more projects
 

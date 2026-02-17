@@ -5,6 +5,74 @@ All notable changes to DevClaw will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-02-17
+
+### Changed — Default Workflow
+
+The out-of-box experience is now **human review with no test phase**. Previously, the default workflow used `reviewPolicy: auto` and included a full test phase (`toTest → testing → done`). The new default is simpler and matches how most teams start:
+
+```
+Planning → To Do → Doing → To Review → PR approved → Done (auto-merge + close)
+```
+
+- **Review policy** changed from `auto` to `human` — all PRs require human approval on GitHub/GitLab
+- **Test phase** (toTest/testing states) removed from defaults — enable it in `workflow.yaml` when ready
+- **Heartbeat auto-merge** — polls PR status, auto-merges on approval, auto-dispatches DEV fix on changes requested or merge conflict
+- **`CHANGES_REQUESTED`** and **`MERGE_CONFLICT`** events added to `toReview` transitions (previously missing)
+
+The test phase is documented as a commented-out section in `workflow.yaml` with step-by-step enablement instructions.
+
+### Added
+
+- **`workflow_guide` tool** — Zero-side-effect informational tool that returns comprehensive `workflow.yaml` configuration documentation for the LLM. Marks every field as FIXED (enum), FREE-FORM, or extendable. Optional `topic` parameter narrows to a specific section: overview, states, roles, review, testing, timeouts, overrides. Call this before editing workflow.yaml.
+- **`autoconfigure_models` tool** — LLM-powered model selection based on available models
+- **`task_edit_body` tool** — Edit issue title/description (initial state only; audit-logged)
+- **Architect role** — New role for design investigations. `research_task` creates a Planning issue with rich context and dispatches an architect worker directly. Architect posts findings as comments, completes with `done` (stays in Planning) or `blocked` (→ Refining). Levels: junior (Sonnet), senior (Opus).
+- **Reviewer role** — Dedicated code review role with junior (Sonnet) and senior (Opus) levels. Used when `reviewPolicy` is `agent` or `auto`.
+- **Dynamic role registry** — Roles are no longer hardcoded. `ROLE_REGISTRY` in `lib/roles/registry.ts` defines all roles with configurable levels, models, emoji, and completion results. Adding a new role means one registry entry.
+- **Configurable workflow state machine** — Issue lifecycle is now a state machine defined in `workflow.yaml` with typed states (`queue`, `active`, `hold`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks.
+- **Three-layer configuration** — Config resolution: built-in defaults → workspace `workflow.yaml` → project `workflow.yaml`. Validated at load time with Zod schemas. Integrity checks verify transition targets exist.
+- **Provider resilience** — All issue tracker calls wrapped with cockatiel retry (3 attempts, exponential backoff) and circuit breaker (opens after 5 failures, half-opens after 30s).
+- **Bootstrap hook for role instructions** — Worker sessions receive role-specific instructions via `agent:bootstrap` hook at session startup. Reads from `devclaw/projects/<project>/prompts/<role>.md`, falls back to `devclaw/prompts/<role>.md`.
+- **PR feedback loop** — Heartbeat detects PR comments with review feedback, transitions to `To Improve`, and dispatches DEV with the feedback context. Reacts with 👀 emoji to processed comments.
+- **PR context in dispatch** — Workers receive PR URL, diff stats, and review comments when dispatched for fixes.
+- **Git history fallback** — Review transitions work even when no PR exists (falls back to git log analysis).
+- **Active workflow in status** — `status` tool response includes `activeWorkflow` object (reviewPolicy, testPhase, stateFlow, hint).
+- **Active workflow in project_register** — Registration response includes active workflow config with customization hint.
+- **Onboarding workflow overview** — Onboarding flow now includes a step explaining the active workflow and how to customize it.
+- **Multi-group isolation** — `notify:{groupId}` labels for project-specific notifications.
+- **Project-first schema** — `projects.json` restructured with project as the top-level key, channels nested within. Automatic migration from old schema.
+- **Orphaned session cleanup** — Health pass detects and cleans up subagent sessions that no longer match any active worker.
+- **Immediate startup tick** — Heartbeat runs first tick 2s after service startup instead of waiting for the full interval.
+- **GitHub timeline API** — Uses timeline API to find linked PRs for more reliable PR detection.
+- **Inline markdown links** — All notifications use inline markdown links instead of bare URLs.
+- **Telegram link preview control** — Notifications disable link previews by default; configurable via `linkPreview` setting.
+
+### Fixed
+
+- **PR comment detection** — `hasConversationComments` in both GitHub and GitLab providers now correctly filters by 👀 reaction instead of using invalid "robot" emoji.
+- **Duplicate links in announcements** — Removed duplicate issue/PR links from orchestrator announcement guidance.
+- **PR-issue linking regex** — Fixed regex pattern for GitHub provider PR-issue linking.
+- **Self-merged PR bypass** — Prevented self-merged PRs from bypassing the `review:human` gate.
+- **Health check false-kills** — Fixed health pass incorrectly killing workers due to session cap check and wrong revert label.
+- **GitLab approval detection** — Removed unreliable GitLab MR approval detection; relies on merge status instead.
+- **Heartbeat auto-merge scope** — Only auto-merges PRs with explicit `review:human` label.
+- **Project lookup** — All tick/heartbeat paths use `getProject()` for proper slug/groupId resolution.
+
+### Changed
+
+- **14 tools** (was 11) — added `workflow_guide`, `autoconfigure_models`, `task_edit_body`, `research_task`
+- **4 roles** (was 2) — developer, tester, architect, reviewer
+- **10 default states** (was 12) — removed toTest/testing from defaults
+- Project identification changed from group IDs to project slugs across all tools
+- `design_task` renamed to `research_task`
+- QA role renamed to Tester
+- Level names standardized: junior/medior/senior across all roles (architect uses junior/senior)
+- Workspace data directory moved from `<workspace>/projects/` to `<workspace>/devclaw/` (automatic migration)
+- All documentation updated for consistency with new defaults
+
+---
+
 ## [1.1.0] - 2026-02-13
 
 ### Security
@@ -79,10 +147,10 @@ This is the first stable release of DevClaw, a plugin for [OpenClaw](https://ope
 
 Comprehensive documentation available in the `docs/` directory:
 - [Architecture](docs/ARCHITECTURE.md) — System design and data flow
-- [Tools Reference](docs/TOOLS.md) — All 11 tools with parameters
-- [Configuration](docs/CONFIGURATION.md) — `openclaw.json` and `projects.json` schemas
+- [Tools Reference](docs/TOOLS.md) — All 14 tools with parameters
+- [Configuration](docs/CONFIGURATION.md) — Roles, timeouts, `openclaw.json`, `projects.json`
+- [Workflow](docs/WORKFLOW.md) — State machine, review policies, test phase
 - [Onboarding Guide](docs/ONBOARDING.md) — Step-by-step setup
-- [QA Workflow](docs/QA_WORKFLOW.md) — Review process and templates
 - [Management Theory](docs/MANAGEMENT.md) — Design philosophy
 
 ### 🔧 Installation
@@ -128,6 +196,7 @@ openclaw chat "Hey, can you help me set up DevClaw?"
 
 ---
 
+[1.3.0]: https://github.com/laurentenhoor/devclaw/compare/v1.2.2...v1.3.0
 [1.1.0]: https://github.com/laurentenhoor/devclaw/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/laurentenhoor/devclaw/compare/v0.1.1...v1.0.0
 [0.1.1]: https://github.com/laurentenhoor/devclaw/compare/v0.1.0...v0.1.1

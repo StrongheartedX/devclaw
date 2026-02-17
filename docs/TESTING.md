@@ -155,7 +155,7 @@ describe("pipeline completion", () => {
     if (h) await h.cleanup();
   });
 
-  it("developer:done transitions Doing → To Test", async () => {
+  it("developer:done transitions Doing → To Review", async () => {
     h = await createTestHarness({
       workers: {
         developer: { active: true, issueId: "42", level: "medior" },
@@ -173,7 +173,7 @@ describe("pipeline completion", () => {
       result: "done",
     });
 
-    assert.strictEqual(result.rule.to, "To Test");
+    assert.strictEqual(result.rule.to, "To Review");
   });
 });
 ```

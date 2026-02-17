@@ -10,17 +10,16 @@ All roles use a unified junior/medior/senior level scheme (architect uses junior
 
 ### Workflow State Machine
 
-The issue lifecycle is now a configurable state machine defined in `workflow.yaml`. The default workflow defines 11 states:
+The issue lifecycle is now a configurable state machine defined in `workflow.yaml`. The default workflow uses **human review** with **no test phase** (10 states):
 
 ```
-Planning → To Do → Doing → To Test → Testing → Done
-                         ↘ In Review → (PR approved → auto-merge) → To Test
-                                    ↘ To Improve → Doing (merge conflict / fix cycle)
-                                    ↘ Refining → (human decision)
-research_task → Planning (architect researches, stays in Planning)
+Planning → To Do → Doing → To Review → [PR approved → auto-merge] → Done
+                                      → PR comments/changes requested → To Improve → Doing
+                                      → Refining → (human decision)
+research_task → To Research → Researching → Planning (architect posts findings)
 ```
 
-States have types (`queue`, `active`, `hold`, `review`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`).
+States have types (`queue`, `active`, `hold`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`). The test phase (toTest, testing) can be enabled via `workflow.yaml` — see [Workflow](WORKFLOW.md#test-phase-optional).
 
 ### Three-Layer Configuration
 
