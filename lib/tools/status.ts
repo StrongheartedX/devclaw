@@ -11,7 +11,7 @@ import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { fetchProjectQueues, getTotalQueuedCount, getQueueLabelsWithPriority } from "../services/queue.js";
 import { requireWorkspaceDir, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow, ExecutionMode } from "../workflow.js";
+import { loadWorkflow, ExecutionMode, StateType } from "../workflow.js";
 
 export function createStatusTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -103,9 +103,23 @@ export function createStatusTool(api: OpenClawPluginApi) {
         priority: q.priority,
       }));
 
+      // Active workflow summary — shows current config at a glance
+      const hasTestPhase = Object.values(workflow.states).some(
+        (s) => s.role === "tester" && (s.type === StateType.QUEUE || s.type === StateType.ACTIVE),
+      );
+      const activeWorkflow = {
+        reviewPolicy: workflow.reviewPolicy ?? "human",
+        testPhase: hasTestPhase,
+        stateFlow: Object.entries(workflow.states)
+          .map(([key, s]) => s.label)
+          .join(" → "),
+        hint: "To change the workflow, call workflow_guide first for the full reference.",
+      };
+
       return jsonResult({
         success: true,
         execution: { projectExecution },
+        activeWorkflow,
         queueLabels,
         projects: filtered,
       });

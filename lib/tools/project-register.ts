@@ -236,6 +236,15 @@ export function createProjectRegisterTool() {
       const action = existing ? `Channel added to existing project` : `Project "${name}" created`;
       const announcement = `${action}. Labels ensured.${promptsNote} Ready for tasks.`;
 
+      // Active workflow info for the orchestrator to mention
+      const activeWorkflow = {
+        reviewPolicy: resolvedConfig.workflow.reviewPolicy ?? "human",
+        testPhase: Object.values(resolvedConfig.workflow.states).some(
+          (s) => s.role === "tester" && (s.type === "queue" || s.type === "active"),
+        ),
+        hint: "The user can change the review policy or enable the test phase — call workflow_guide for the full reference.",
+      };
+
       return jsonResult({
         success: true,
         project: name,
@@ -248,6 +257,7 @@ export function createProjectRegisterTool() {
         labelsCreated: 10,
         promptsScaffolded: promptsCreated,
         isNewProject: !existing,
+        activeWorkflow,
         announcement,
       });
     },

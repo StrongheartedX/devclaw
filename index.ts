@@ -12,6 +12,7 @@ import { createSetupTool } from "./lib/tools/setup.js";
 import { createOnboardTool } from "./lib/tools/onboard.js";
 import { createAutoConfigureModelsTool } from "./lib/tools/autoconfigure-models.js";
 import { createResearchTaskTool } from "./lib/tools/research-task.js";
+import { createWorkflowGuideTool } from "./lib/tools/workflow-guide.js";
 import { registerCli } from "./lib/cli.js";
 import { registerHeartbeatService } from "./lib/services/heartbeat.js";
 import { registerBootstrapHook } from "./lib/bootstrap-hook.js";
@@ -94,6 +95,9 @@ const plugin = {
     api.registerTool(createAutoConfigureModelsTool(api), {
       names: ["autoconfigure_models"],
     });
+    api.registerTool(createWorkflowGuideTool(), {
+      names: ["workflow_guide"],
+    });
 
     // CLI
     api.registerCli(({ program }: { program: any }) => registerCli(program, api), {
@@ -107,7 +111,7 @@ const plugin = {
     registerBootstrapHook(api);
 
     api.logger.info(
-      "DevClaw plugin registered (12 tools, 1 CLI command group, 1 service, 1 hook)",
+      "DevClaw plugin registered (13 tools, 1 CLI command group, 1 service, 1 hook)",
     );
   },
 };

@@ -262,6 +262,7 @@ All orchestration goes through these tools. You do NOT manually manage sessions,
 | \`work_start\` | End-to-end: label transition, level assignment, session create/reuse, dispatch with role instructions |
 | \`work_finish\` | End-to-end: label transition, state update, issue close/reopen |
 | \`research_task\` | Dispatch architect to research; Planning issue created from findings when architect calls \`work_finish\` |
+| \`workflow_guide\` | Reference guide for workflow.yaml configuration. Call this BEFORE making any workflow changes. Returns valid values, config structure, and recipes. |
 
 ### First Thing on Session Start
 
@@ -289,6 +290,8 @@ Configurable per project in \`workflow.yaml\` → \`workflow.reviewPolicy\`:
 ### Test Phase (optional)
 
 By default, approved PRs go straight to Done. To add automated QA after review, uncomment the \`toTest\` and \`testing\` states in \`workflow.yaml\` and change the review targets from \`done\` to \`toTest\`. See the comments in \`workflow.yaml\` for step-by-step instructions.
+
+> **When the user asks to change the workflow**, call \`workflow_guide\` first. It explains the full config structure, valid values, and override system.
 
 With testing enabled, the flow becomes:
 \`\`\`

@@ -175,6 +175,14 @@ Then call \`project_register\`.
 - Send any message with the bot mentioned
 - Bot can tell you the group ID
 
+**Step 6: Workflow Overview**
+After project registration, briefly tell the user about their active workflow:
+
+- **Review policy**: human (default) — PRs need human approval on GitHub/GitLab, heartbeat auto-merges when approved.
+- **Test phase**: disabled by default — approved PRs go straight to Done.
+- **Customization**: They can change the review policy (human/agent/auto), enable a test phase with automated QA, or override settings per project. Point them to \`workflow.yaml\` in the devclaw data directory.
+- Say: "Your workflow is set up with **human review** and no test phase. If you'd like to change the review policy or enable automated testing, just ask and I'll walk you through it."
+
 ## Guidelines
 - Be conversational and friendly. Ask one question at a time.
 - Show defaults so the user can accept them quickly.
