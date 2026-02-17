@@ -169,12 +169,14 @@ describe("getWorker", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
+          slug: "test",
           name: "test",
           repo: "~/git/test",
           groupName: "Test",
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
+          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: { active: true, issueId: "5", startTime: null, level: "medior", sessions: {} },
           },
@@ -191,12 +193,14 @@ describe("getWorker", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
+          slug: "test",
           name: "test",
           repo: "~/git/test",
           groupName: "Test",
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
+          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {},
         },
       },
@@ -217,12 +221,14 @@ describe("writeProjects round-trip", () => {
     const data: ProjectsData = {
       projects: {
         "g1": {
+          slug: "roundtrip",
           name: "roundtrip",
           repo: "~/git/rt",
           groupName: "RT",
           deployUrl: "",
           baseBranch: "main",
           deployBranch: "main",
+          channels: [{ groupId: "g1", channel: "telegram", name: "primary", events: ["*"] }],
           workers: {
             developer: emptyWorkerState(["junior", "medior", "senior"]),
             tester: emptyWorkerState(["junior", "medior", "senior"]),

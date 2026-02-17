@@ -135,7 +135,15 @@ export function migrateProject(project: Project): void {
     project.workers = {};
   }
 
-  if (!project.channel) {
-    project.channel = "telegram";
+  // Migrate legacy `channel` (string) field to `channels` array.
+  // Called with `project as any` so raw.channel may still exist on old data.
+  const rawChannel = (raw.channel as string | undefined) ?? "telegram";
+  if (!project.channels || project.channels.length === 0) {
+    // Preserve the legacy single-channel registration. groupId is unknown here
+    // (the outer loop in readProjects doesn't pass it), so we leave groupId blank
+    // and callers fall back to channels[0] which still gives the right channel type.
+    project.channels = [{ groupId: "", channel: rawChannel as "telegram" | "whatsapp" | "discord" | "slack", name: "primary", events: ["*"] }];
   }
+  // Remove legacy field so it doesn't persist back to disk
+  delete (raw as Record<string, unknown>).channel;
 }

@@ -16,7 +16,7 @@ import { executeCompletion } from "./pipeline.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { DEFAULT_WORKFLOW, ReviewPolicy, type WorkflowConfig } from "../workflow.js";
-import { readProjects, getWorker } from "../projects.js";
+import { readProjects, getWorker, getProject } from "../projects.js";
 
 // ---------------------------------------------------------------------------
 // Test suite
@@ -71,7 +71,7 @@ describe("E2E pipeline", () => {
 
       // Verify worker state updated in projects.json
       const data = await readProjects(h.workspaceDir);
-      const worker = getWorker(data.projects[h.groupId], "developer");
+      const worker = getWorker(getProject(data, h.groupId)!, "developer");
       assert.strictEqual(worker.active, true);
       assert.strictEqual(worker.issueId, "42");
       assert.strictEqual(worker.level, "medior");
@@ -182,7 +182,7 @@ describe("E2E pipeline", () => {
       assert.ok(!issue.labels.includes("Doing"));
 
       const data = await readProjects(h.workspaceDir);
-      assert.strictEqual(getWorker(data.projects[h.groupId], "developer").active, false);
+      assert.strictEqual(getWorker(getProject(data, h.groupId)!, "developer").active, false);
       assert.strictEqual(output.issueClosed, false);
     });
   });
@@ -779,7 +779,7 @@ describe("E2E pipeline", () => {
         workspaceDir: h.workspaceDir,
         agentId: "main",
         groupId: h.groupId,
-        project: (await readProjects(h.workspaceDir)).projects[h.groupId],
+        project: getProject(await readProjects(h.workspaceDir), h.groupId)!,
         issueId: 300,
         issueTitle: "Payment flow",
         issueDescription: "Implement payment",

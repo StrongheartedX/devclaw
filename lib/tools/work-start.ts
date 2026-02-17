@@ -116,7 +116,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,
         pluginConfig,
-        channel: project.channel,
+        channel: project.channels.find(ch => ch.groupId === groupId)?.channel ?? project.channels[0]?.channel,
         sessionKey: ctx.sessionKey,
         runtime: api.runtime,
       });
