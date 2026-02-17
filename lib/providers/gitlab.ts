@@ -157,8 +157,7 @@ export class GitLabProvider implements IssueProvider {
           state = PrState.CHANGES_REQUESTED;
         } else {
           // Check for top-level conversation comments from non-author users
-          const mrAuthor = open.author?.username ?? "";
-          const hasComments = await this.hasConversationComments(open.iid, mrAuthor);
+          const hasComments = await this.hasConversationComments(open.iid);
           state = hasComments ? PrState.HAS_COMMENTS : PrState.OPEN;
         }
       }
@@ -186,31 +185,32 @@ export class GitLabProvider implements IssueProvider {
   }
 
   /**
-   * Check if an MR has any top-level conversation notes from non-author, non-system users.
+   * Check if an MR has any top-level conversation notes from human users.
+   * Excludes only system notes and empty bodies (author comments are included).
    * Uses the MR notes endpoint (regular comments, not threaded discussions).
    */
-  private async hasConversationComments(mrIid: number, mrAuthor: string): Promise<boolean> {
+  private async hasConversationComments(mrIid: number): Promise<boolean> {
     try {
       const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/notes`]);
-      const notes = JSON.parse(raw) as Array<{ author: { username: string }; system: boolean; body: string }>;
+      const notes = JSON.parse(raw) as Array<{ system: boolean; body: string }>;
       return notes.some(
-        (n) => !n.system && n.author.username !== mrAuthor && n.body.trim().length > 0,
+        (n) => !n.system && n.body.trim().length > 0,
       );
     } catch { return false; }
   }
 
   /**
-   * Fetch top-level conversation notes on an MR from non-author, non-system users.
+   * Fetch top-level conversation notes on an MR from human users.
+   * Excludes only system notes and empty bodies.
    */
   private async fetchConversationComments(
     mrIid: number,
-    mrAuthor: string,
   ): Promise<Array<{ id: number; author: { username: string }; body: string; created_at: string }>> {
     try {
       const raw = await this.glab(["api", `projects/:id/merge_requests/${mrIid}/notes`]);
       const all = JSON.parse(raw) as Array<{ id: number; author: { username: string }; system: boolean; body: string; created_at: string }>;
       return all.filter(
-        (n) => !n.system && n.author.username !== mrAuthor && n.body.trim().length > 0,
+        (n) => !n.system && n.body.trim().length > 0,
       );
     } catch { return []; }
   }
@@ -294,8 +294,7 @@ export class GitLabProvider implements IssueProvider {
     } catch { /* best-effort */ }
 
     // Also include top-level conversation notes (regular MR comments, not threaded)
-    const mrAuthor = open.author?.username ?? "";
-    const conversationNotes = await this.fetchConversationComments(open.iid, mrAuthor);
+    const conversationNotes = await this.fetchConversationComments(open.iid);
     for (const n of conversationNotes) {
       // Avoid duplicates: discussions endpoint may already include these
       if (!comments.some((c) => c.id === n.id)) {
