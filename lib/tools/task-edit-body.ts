@@ -76,20 +76,29 @@ Examples:
       const { project } = await resolveProject(workspaceDir, groupId);
       const { provider, type: providerType } = await resolveProvider(project);
 
-      // Determine initial state from per-project workflow config
+      // Determine editable states from per-project workflow config.
+      // Edits are allowed in:
+      //   1. The initial state (e.g. "Planning") — human-created issues awaiting review
+      //   2. Any active architect state (e.g. "Researching") — architect refines mid-research
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
       const initialStateLabel = getInitialStateLabel(resolvedConfig.workflow);
+
+      // Collect architect active states as additional editable states
+      const architectActiveStates = Object.values(resolvedConfig.workflow.states)
+        .filter((s) => s.type === "active" && s.role === "architect")
+        .map((s) => s.label);
+      const editableStates = [initialStateLabel, ...architectActiveStates];
 
       // Fetch current issue
       const issue = await provider.getIssue(issueId);
       const currentState = provider.getCurrentStateLabel(issue);
 
-      // Enforce initial-state-only constraint
-      if (currentState !== initialStateLabel) {
+      // Enforce editable-states constraint
+      if (!currentState || !editableStates.includes(currentState)) {
         throw new Error(
           `Cannot edit issue #${issueId}: it is in "${currentState ?? "unknown"}", ` +
-          `but edits are only allowed in the initial state "${initialStateLabel}". ` +
-          `Move it back to "${initialStateLabel}" first, or add a comment instead.`,
+          `but edits are only allowed in: ${editableStates.map(s => `"${s}"`).join(", ")}. ` +
+          `Add a comment instead, or transition the issue first.`,
         );
       }
 

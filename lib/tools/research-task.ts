@@ -1,28 +1,38 @@
 /**
- * research_task — Spawn an architect to research a design/architecture problem.
+ * research_task — Start a research ticket in "To Research" state and dispatch the architect.
  *
- * Dispatches the architect directly (no issue created yet).
- * The architect investigates, produces findings, and calls work_finish(result="done", summary="<findings>").
- * work_finish then creates the Planning issue with the findings as the body for human review.
+ * The architect picks up the issue, refines the ticket description iteratively via
+ * task_edit_body and task_comment, then calls work_finish(result="done") to land
+ * it in Planning for operator review.
  *
- * No issue appears until research is complete — Planning means "ready for human review".
+ * Flow:
+ *   research_task() → issue created in "To Research" → architect dispatched
+ *   → architect researches, refines ticket with task_edit_body
+ *   → architect calls work_finish(result="done") → "Researching" → "Planning"
+ *   → operator reviews, optionally sends back to "To Research" via task_update
+ *   → when satisfied, transitions to "To Do" → developer picks up
  */
 import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
+import type { StateLabel } from "../providers/provider.js";
 import { getWorker } from "../projects.js";
-import { dispatchResearch } from "../dispatch.js";
+import { dispatchTask } from "../dispatch.js";
 import { log as auditLog } from "../audit.js";
-import { requireWorkspaceDir, resolveProject, getPluginConfig } from "../tool-helpers.js";
+import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
 import { loadConfig } from "../config/index.js";
+import { getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, getActiveLabel } from "../workflow.js";
 import { selectLevel } from "../model-selector.js";
 import { resolveModel } from "../roles/index.js";
+
+/** Queue label for research tasks. */
+const TO_RESEARCH_LABEL = "To Research";
 
 export function createResearchTaskTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
     name: "research_task",
     label: "Research Task",
-    description: `Spawn an architect to research a design/architecture problem. Dispatches architect directly — no issue created yet. The architect calls \`work_finish(result='done', summary='<findings>')\` which creates the Planning issue for human review.
+    description: `Spawn an architect to research a design/architecture problem. Creates a "To Research" issue and dispatches an architect worker.
 
 IMPORTANT: Provide a detailed description with enough background context for the architect
 to produce actionable, development-ready findings. Include: current state, constraints,
@@ -31,9 +41,9 @@ enough for a developer to start implementation immediately.
 
 The architect will:
 1. Research the problem systematically (codebase, docs, web)
-2. Investigate >= 3 alternatives with tradeoffs
-3. Produce a recommendation with implementation outline
-4. Call work_finish(result="done", summary="<findings>") — this creates the Planning issue for human review
+2. Refine the ticket description with task_edit_body as they learn
+3. Post findings as comments via task_comment
+4. Call work_finish(result="done", summary="<findings>") — transitions to Planning for human review
 
 Example:
   research_task({
@@ -90,8 +100,16 @@ Example:
       if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
       const { project } = await resolveProject(workspaceDir, groupId);
+      const { provider } = await resolveProvider(project);
       const pluginConfig = getPluginConfig(api);
       const role = "architect";
+
+      // Build issue body with rich context for the architect to start from
+      const bodyParts = ["## Background", "", description];
+      if (focusAreas.length > 0) {
+        bodyParts.push("", "## Focus Areas", ...focusAreas.map((a) => `- ${a}`));
+      }
+      const issueBody = bodyParts.join("\n");
 
       await auditLog(workspaceDir, "research_task", {
         project: project.name, groupId, title, complexity, focusAreas, dryRun,
@@ -109,38 +127,58 @@ Example:
         return jsonResult({
           success: true,
           dryRun: true,
-          research: { title, level, model, status: "dry_run" },
-          announcement: `📐 [DRY RUN] Would dispatch ${role} (${level}) to research: ${title}`,
+          issue: { title, label: TO_RESEARCH_LABEL },
+          research: { level, model, status: "dry_run" },
+          announcement: `📐 [DRY RUN] Would create research ticket and dispatch ${role} (${level}) for: ${title}`,
         });
+      }
+
+      // Create issue in "To Research" (the architect queue state)
+      const issue = await provider.createIssue(title, issueBody, TO_RESEARCH_LABEL as StateLabel);
+
+      // Apply notify:{groupId} label for multi-group isolation (best-effort)
+      const notifyLabel = getNotifyLabel(groupId);
+      const hasNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
+      if (!hasNotify) {
+        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+          .then(() => provider.addLabel(issue.iid, notifyLabel))
+          .catch(() => {});
       }
 
       // Check worker availability
       const worker = getWorker(project, role);
       if (worker.active) {
+        // Architect is busy — issue created in queue, heartbeat will pick it up when free
         return jsonResult({
-          success: false,
+          success: true,
+          issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: TO_RESEARCH_LABEL },
           research: {
             level,
-            status: "busy",
-            reason: `${role.toUpperCase()} already active on #${worker.issueId ?? "pending"}. Try again when the current research completes.`,
+            status: "queued",
+            reason: `${role.toUpperCase()} already active on #${worker.issueId}. Research ticket queued — architect will pick it up when current work completes.`,
           },
-          announcement: `📐 ${role.toUpperCase()} busy — cannot dispatch research for: ${title}`,
+          announcement: `📐 Created research ticket #${issue.iid}: ${title} (architect busy — queued)\n🔗 ${issue.web_url}`,
         });
       }
 
-      // Dispatch architect directly — no issue created yet.
-      // The architect calls work_finish(result="done", summary="<findings>")
-      // which creates the Planning issue with findings as the body.
-      const dr = await dispatchResearch({
+      // Dispatch architect via standard dispatchTask — same pipeline as every other role.
+      // fromLabel: "To Research" (queue), toLabel: "Researching" (active)
+      const toLabel = getActiveLabel(resolvedConfig.workflow, role);
+      const dr = await dispatchTask({
         workspaceDir,
         agentId: ctx.agentId,
         groupId,
         project,
+        issueId: issue.iid,
+        issueTitle: issue.title,
+        issueDescription: issueBody,
+        issueUrl: issue.web_url,
         role,
         level,
-        researchTitle: title,
-        researchDescription: description,
-        focusAreas,
+        fromLabel: TO_RESEARCH_LABEL,
+        toLabel,
+        transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
+        provider,
         pluginConfig,
         channel: project.channel,
         sessionKey: ctx.sessionKey,
@@ -149,13 +187,13 @@ Example:
 
       return jsonResult({
         success: true,
+        issue: { id: issue.iid, title: issue.title, url: issue.web_url, label: toLabel },
         research: {
           sessionKey: dr.sessionKey,
           level: dr.level,
           model: dr.model,
           sessionAction: dr.sessionAction,
           status: "in_progress",
-          note: "Planning issue will be created when architect calls work_finish",
         },
         project: project.name,
         announcement: dr.announcement,
