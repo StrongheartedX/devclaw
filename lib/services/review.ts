@@ -77,6 +77,8 @@ export async function reviewPass(opts: {
               prUrl: status.url,
             });
             onFeedback?.(issue.iid, "changes_requested", status.url, issue.title, issue.web_url);
+            // React to each review comment with 🤖 to acknowledge processing (best-effort)
+            reactToFeedbackComments(provider, issue.iid).catch(() => {});
             transitions++;
             continue;
           }
@@ -193,4 +195,25 @@ export async function reviewPass(opts: {
   }
 
   return transitions;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Reaction emoji used to acknowledge PR feedback has been noticed. */
+const FEEDBACK_REACTION_EMOJI = "robot";
+
+/**
+ * Add a 🤖 reaction to all PR review comments on the issue's PR.
+ * Best-effort: errors are swallowed by the caller (.catch(() => {})).
+ */
+async function reactToFeedbackComments(
+  provider: IssueProvider,
+  issueId: number,
+): Promise<void> {
+  const comments = await provider.getPrReviewComments(issueId);
+  for (const comment of comments) {
+    await provider.reactToPrComment(issueId, comment.id, FEEDBACK_REACTION_EMOJI);
+  }
 }

@@ -87,6 +87,14 @@ export interface IssueProvider {
   getPrDiff(issueId: number): Promise<string | null>;
   /** Get review comments on the PR linked to an issue. */
   getPrReviewComments(issueId: number): Promise<PrReviewComment[]>;
+  /**
+   * Add an emoji reaction to a PR/MR comment by its comment ID.
+   * Best-effort — implementations should not throw.
+   * @param issueId  Issue ID (used to locate the associated PR/MR)
+   * @param commentId  The numeric ID of the comment to react to
+   * @param emoji  Reaction name understood by the provider (e.g. "rocket", "+1")
+   */
+  reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   addComment(issueId: number, body: string): Promise<void>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
   healthCheck(): Promise<boolean>;
