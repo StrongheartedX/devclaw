@@ -160,7 +160,7 @@ export class GitHubProvider implements IssueProvider {
       if (!raw) return [];
       const prs = JSON.parse(raw) as T[];
       const branchPat = new RegExp(`^(?:fix|feat|feature|chore|bugfix|hotfix|refactor|docs|test)/${issueId}-`);
-      const titlePat = new RegExp(`\\b#${issueId}\\b`);
+      const titlePat = new RegExp(`#${issueId}\\b`);
 
       // Primary: match by branch name
       const byBranch = prs.filter((pr) => pr.headRefName && branchPat.test(pr.headRefName));
