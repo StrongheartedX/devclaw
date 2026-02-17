@@ -298,6 +298,7 @@ export async function tick(opts: {
         provider,
         repoPath: project.repo,
         gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
+        baseBranch: project.baseBranch,
         onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
           provider.getIssue(issueId).then((issue) => {
             const target = resolveNotifyChannel(issue.labels, project.channels);

@@ -346,6 +346,26 @@ export class GitLabProvider implements IssueProvider {
     return this.getIssue(issueId);
   }
 
+  /**
+   * Check if work for an issue is already present on the base branch via git log.
+   * Searches the last 200 commits on baseBranch for commit messages mentioning #issueId or !issueId.
+   * Used as a fallback when no MR exists (e.g., direct commit to main).
+   */
+  async isCommitOnBaseBranch(issueId: number, baseBranch: string): Promise<boolean> {
+    try {
+      // Search for issue references: #N (issue) or !N (MR) in commit messages
+      const patterns = [`#${issueId}`, `!${issueId}`];
+      for (const pattern of patterns) {
+        const result = await runCommand(
+          ["git", "log", `origin/${baseBranch}`, "--oneline", "-200", "--grep", pattern],
+          { timeoutMs: 15_000, cwd: this.repoPath },
+        );
+        if (result.stdout.trim().length > 0) return true;
+      }
+      return false;
+    } catch { return false; }
+  }
+
   async healthCheck(): Promise<boolean> {
     try { await this.glab(["auth", "status"]); return true; } catch { return false; }
   }
