@@ -79,17 +79,12 @@ export interface IssueProvider {
   removeLabels(issueId: number, labels: string[]): Promise<void>;
   closeIssue(issueId: number): Promise<void>;
   reopenIssue(issueId: number): Promise<void>;
-  hasStateLabel(issue: Issue, expected: StateLabel): boolean;
-  getCurrentStateLabel(issue: Issue): StateLabel | null;
-  hasMergedMR(issueId: number): Promise<boolean>;
   getMergedMRUrl(issueId: number): Promise<string | null>;
   getPrStatus(issueId: number): Promise<PrStatus>;
   mergePr(issueId: number): Promise<void>;
   getPrDiff(issueId: number): Promise<string | null>;
   /** Get review comments on the PR linked to an issue. */
   getPrReviewComments(issueId: number): Promise<PrReviewComment[]>;
-  /** React to a PR comment with an emoji (e.g. "+1"). Best-effort. */
-  reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   addComment(issueId: number, body: string): Promise<void>;
   editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue>;
   healthCheck(): Promise<boolean>;

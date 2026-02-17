@@ -11,7 +11,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import type { StateLabel } from "../providers/provider.js";
-import { DEFAULT_WORKFLOW, getStateLabels, findStateByLabel } from "../workflow.js";
+import { DEFAULT_WORKFLOW, getStateLabels, findStateByLabel, getCurrentStateLabel } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
@@ -29,16 +29,16 @@ Use cases:
 - Failed auto-transitions that need correction
 
 Examples:
-- State only: { projectGroupId: "-123456789", issueId: 42, state: "To Do" }
-- Level only: { projectGroupId: "-123456789", issueId: 42, level: "senior" }
-- Both: { projectGroupId: "-123456789", issueId: 42, state: "To Do", level: "senior", reason: "Escalating to senior" }`,
+- State only: { projectSlug: "my-webapp", issueId: 42, state: "To Do" }
+- Level only: { projectSlug: "my-webapp", issueId: 42, level: "senior" }
+- Both: { projectSlug: "my-webapp", issueId: 42, state: "To Do", level: "senior", reason: "Escalating to senior" }`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "issueId"],
+      required: ["projectSlug", "issueId"],
       properties: {
-        projectGroupId: {
+        projectSlug: {
           type: "string",
-          description: "Telegram/WhatsApp group ID (key in projects.json)",
+          description: "Project slug (e.g. 'my-webapp').",
         },
         issueId: {
           type: "number",
@@ -61,7 +61,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const issueId = params.issueId as number;
       const newState = (params.state as StateLabel) ?? undefined;
       const newLevel = (params.level as string) ?? undefined;
@@ -72,11 +72,12 @@ Examples:
         throw new Error("At least one of 'state' or 'level' must be provided.");
       }
 
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider, type: providerType } = await resolveProvider(project);
+      const resolvedConfig = await loadConfig(workspaceDir, project.name);
 
       const issue = await provider.getIssue(issueId);
-      const currentState = provider.getCurrentStateLabel(issue);
+      const currentState = getCurrentStateLabel(issue.labels, resolvedConfig.workflow);
       if (!currentState) {
         throw new Error(`Issue #${issueId} has no recognized state label. Cannot perform update.`);
       }
@@ -95,15 +96,13 @@ Examples:
       if (newLevel) {
         // Detect role from current (or new) state label
         const effectiveState = newState ?? currentState;
-        const workflow = (await loadConfig(workspaceDir, project.name)).workflow;
-        const stateConfig = findStateByLabel(workflow, effectiveState);
+        const stateConfig = findStateByLabel(resolvedConfig.workflow, effectiveState);
         const role = stateConfig?.role;
         if (!role) {
           throw new Error(`Cannot determine role from state "${effectiveState}". Level can only be set on role-assigned states.`);
         }
 
         // Validate level exists for role
-        const resolvedConfig = await loadConfig(workspaceDir, project.name);
         const roleConfig = resolvedConfig.roles[role];
         if (!roleConfig || !roleConfig.levels.includes(newLevel)) {
           throw new Error(`Invalid level "${newLevel}" for role "${role}". Valid levels: ${roleConfig?.levels.join(", ") ?? "none"}`);
@@ -121,7 +120,7 @@ Examples:
 
       // Audit
       await auditLog(workspaceDir, "task_update", {
-        project: project.name, groupId, issueId,
+        project: project.name, issueId,
         ...(stateChanged ? { fromState: currentState, toState: newState } : {}),
         ...(levelChanged ? { fromLevel: fromLevel ?? null, toLevel: newLevel } : {}),
         reason: reason ?? null, provider: providerType,

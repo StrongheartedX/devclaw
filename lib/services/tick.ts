@@ -5,8 +5,7 @@
  * Called by: work_start (fill parallel slot), work_finish (next pipeline step), heartbeat service (sweep).
  */
 import type { PluginRuntime } from "openclaw/plugin-sdk";
-import type { Issue, StateLabel } from "../providers/provider.js";
-import type { IssueProvider } from "../providers/provider.js";
+import type { Issue, IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
 import { getWorker, getProject, getSessionForLevel, readProjects } from "../projects.js";
@@ -28,7 +27,7 @@ import { detectRoleLevelFromLabels, detectStepRouting, findNextIssueForRole } fr
 
 export type TickAction = {
   project: string;
-  groupId: string;
+  projectSlug: string;
   issueId: number;
   issueTitle: string;
   issueUrl: string;
@@ -51,7 +50,7 @@ export type TickResult = {
  */
 export async function projectTick(opts: {
   workspaceDir: string;
-  groupId: string;
+  projectSlug: string;
   agentId?: string;
   sessionKey?: string;
   pluginConfig?: Record<string, unknown>;
@@ -60,19 +59,19 @@ export async function projectTick(opts: {
   /** Only attempt this role. Used by work_start to fill the other slot. */
   targetRole?: Role;
   /** Optional provider override (for testing). Uses createProvider if omitted. */
-  provider?: Pick<IssueProvider, "listIssuesByLabel" | "transitionLabel" | "listComments">;
+  provider?: IssueProvider;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
   runtime?: PluginRuntime;
   /** Workflow config (defaults to DEFAULT_WORKFLOW) */
   workflow?: WorkflowConfig;
 }): Promise<TickResult> {
   const {
-    workspaceDir, groupId, agentId, sessionKey, pluginConfig, dryRun,
+    workspaceDir, projectSlug, agentId, sessionKey, pluginConfig, dryRun,
     maxPickups, targetRole, runtime,
   } = opts;
 
-  const project = getProject(await readProjects(workspaceDir), groupId);
-  if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
+  const project = getProject(await readProjects(workspaceDir), projectSlug);
+  if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${projectSlug}` }] };
 
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
   const workflow = opts.workflow ?? resolvedConfig.workflow;
@@ -95,7 +94,7 @@ export async function projectTick(opts: {
     }
 
     // Re-read fresh state (previous dispatch may have changed it)
-    const fresh = getProject(await readProjects(workspaceDir), groupId);
+    const fresh = getProject(await readProjects(workspaceDir), projectSlug);
     if (!fresh) break;
 
     const worker = getWorker(fresh, role);
@@ -119,7 +118,7 @@ export async function projectTick(opts: {
       }
     }
 
-    const next = await findNextIssueForRole(provider, role, workflow, groupId);
+    const next = await findNextIssueForRole(provider, role, workflow);
     if (!next) continue;
 
     const { issue, label: currentLabel } = next;
@@ -146,7 +145,7 @@ export async function projectTick(opts: {
 
     if (dryRun) {
       pickups.push({
-        project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
+        project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
         role, level: selectedLevel,
         sessionAction: getSessionForLevel(worker, selectedLevel) ? "send" : "spawn",
         announcement: `[DRY RUN] Would pick up #${issue.iid}`,
@@ -154,18 +153,16 @@ export async function projectTick(opts: {
     } else {
       try {
         const dr = await dispatchTask({
-          workspaceDir, agentId, groupId, project: fresh, issueId: issue.iid,
+          workspaceDir, agentId, project: fresh, issueId: issue.iid,
           issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
           role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
-          transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
-          provider: provider as IssueProvider,
+          provider,
           pluginConfig,
-          channel: fresh.channels.find(ch => ch.groupId === groupId)?.channel ?? fresh.channels[0]?.channel,
           sessionKey,
           runtime,
         });
         pickups.push({
-          project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
+          project: project.name, projectSlug, issueId: issue.iid, issueTitle: issue.title, issueUrl: issue.web_url,
           role, level: dr.level, sessionAction: dr.sessionAction, announcement: dr.announcement,
         });
       } catch (err) {

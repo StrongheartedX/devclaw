@@ -131,18 +131,6 @@ export class GitLabProvider implements IssueProvider {
   async closeIssue(issueId: number): Promise<void> { await this.glab(["issue", "close", String(issueId)]); }
   async reopenIssue(issueId: number): Promise<void> { await this.glab(["issue", "reopen", String(issueId)]); }
 
-  hasStateLabel(issue: Issue, expected: StateLabel): boolean { return issue.labels.includes(expected); }
-
-  getCurrentStateLabel(issue: Issue): StateLabel | null {
-    const stateLabels = getStateLabels(this.workflow);
-    return stateLabels.find((l) => issue.labels.includes(l)) ?? null;
-  }
-
-  async hasMergedMR(issueId: number): Promise<boolean> {
-    const mrs = await this.getRelatedMRs(issueId);
-    return mrs.some((mr) => mr.state === "merged");
-  }
-
   async getMergedMRUrl(issueId: number): Promise<string | null> {
     const mrs = await this.getRelatedMRs(issueId);
     const merged = mrs
@@ -269,19 +257,6 @@ export class GitLabProvider implements IssueProvider {
 
     comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return comments;
-  }
-
-  async reactToPrComment(_issueId: number, commentId: number, emoji: string): Promise<void> {
-    // GitLab uses award emoji on MR notes. We need the MR iid though.
-    // Since we have the commentId (note id), use the notes API directly.
-    try {
-      // Find the MR for this issue
-      const mrs = await this.getRelatedMRs(_issueId);
-      const open = mrs.find((mr) => mr.state === "opened");
-      if (!open) return;
-      const glEmoji = emoji === "+1" ? "thumbsup" : emoji === "-1" ? "thumbsdown" : emoji;
-      await this.glab(["api", `projects/:id/merge_requests/${open.iid}/notes/${commentId}/award_emoji`, "-f", `name=${glEmoji}`, "-X", "POST"]);
-    } catch { /* best-effort */ }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

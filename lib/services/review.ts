@@ -11,7 +11,6 @@ import {
   Action,
   ReviewCheck,
   WorkflowEvent,
-  filterIssuesByGroup,
   type WorkflowConfig,
   type StateConfig,
 } from "../workflow.js";
@@ -25,7 +24,7 @@ import { log as auditLog } from "../audit.js";
  */
 export async function reviewPass(opts: {
   workspaceDir: string;
-  groupId: string;
+  projectName: string;
   workflow: WorkflowConfig;
   provider: IssueProvider;
   repoPath: string;
@@ -35,7 +34,7 @@ export async function reviewPass(opts: {
   /** Called when changes are requested or conflicts detected (for notifications). */
   onFeedback?: (issueId: number, reason: "changes_requested" | "merge_conflict", prUrl: string | null, issueTitle: string, issueUrl: string) => void;
 }): Promise<number> {
-  const { workspaceDir, groupId, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge, onFeedback } = opts;
+  const { workspaceDir, projectName, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge, onFeedback } = opts;
   let transitions = 0;
 
   // Find all states with a review check (e.g. toReview with check: prApproved)
@@ -45,8 +44,7 @@ export async function reviewPass(opts: {
   for (const [stateKey, state] of reviewStates) {
     if (!state.on || !state.check) continue;
 
-    const allIssues = await provider.listIssuesByLabel(state.label);
-    const issues = filterIssuesByGroup(allIssues, groupId);
+    const issues = await provider.listIssuesByLabel(state.label);
     for (const issue of issues) {
       // Only process issues explicitly marked for human review.
       // review:agent → agent reviewer pipeline handles merge.
@@ -73,7 +71,7 @@ export async function reviewPass(opts: {
           if (targetState) {
             await provider.transitionLabel(issue.iid, state.label, targetState.label);
             await auditLog(workspaceDir, "review_transition", {
-              groupId, issueId: issue.iid,
+              project: projectName, issueId: issue.iid,
               from: state.label, to: targetState.label,
               reason: "changes_requested",
               prUrl: status.url,
@@ -94,7 +92,7 @@ export async function reviewPass(opts: {
           if (targetState) {
             await provider.transitionLabel(issue.iid, state.label, targetState.label);
             await auditLog(workspaceDir, "review_transition", {
-              groupId, issueId: issue.iid,
+              project: projectName, issueId: issue.iid,
               from: state.label, to: targetState.label,
               reason: "merge_conflict",
               prUrl: status.url,
@@ -137,7 +135,7 @@ export async function reviewPass(opts: {
               } catch (err) {
                 // Merge failed → fire MERGE_FAILED transition (developer fixes conflicts)
                 await auditLog(workspaceDir, "review_merge_failed", {
-                  groupId,
+                  project: projectName,
                   issueId: issue.iid,
                   from: state.label,
                   error: (err as Error).message ?? String(err),
@@ -149,7 +147,7 @@ export async function reviewPass(opts: {
                   if (failedState) {
                     await provider.transitionLabel(issue.iid, state.label, failedState.label);
                     await auditLog(workspaceDir, "review_transition", {
-                      groupId,
+                      project: projectName,
                       issueId: issue.iid,
                       from: state.label,
                       to: failedState.label,
@@ -181,7 +179,7 @@ export async function reviewPass(opts: {
       await provider.transitionLabel(issue.iid, state.label, targetState.label);
 
       await auditLog(workspaceDir, "review_transition", {
-        groupId,
+        project: projectName,
         issueId: issue.iid,
         from: state.label,
         to: targetState.label,

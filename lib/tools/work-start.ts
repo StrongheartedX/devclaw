@@ -15,7 +15,7 @@ import { dispatchTask } from "../dispatch.js";
 import { findNextIssue, detectRoleFromLabel, detectRoleLevelFromLabels } from "../services/queue-scan.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider, getPluginConfig } from "../tool-helpers.js";
-import { loadWorkflow, getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode } from "../workflow.js";
+import { loadWorkflow, getActiveLabel, getNotifyLabel, NOTIFY_LABEL_COLOR, NOTIFY_LABEL_PREFIX, ExecutionMode, getCurrentStateLabel } from "../workflow.js";
 
 export function createWorkStartTool(api: OpenClawPluginApi) {
   return (ctx: ToolContext) => ({
@@ -24,9 +24,9 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
     description: `Pick up a task from the issue queue. ONLY works in project group chats. Handles label transition, level assignment, session creation, dispatch, and audit. Picks up only the explicitly requested issue.`,
     parameters: {
       type: "object",
-      required: ["projectGroupId"],
+      required: ["projectSlug"],
       properties: {
-        projectGroupId: { type: "string", description: "Project group ID." },
+        projectSlug: { type: "string", description: "Project slug (e.g. 'my-webapp')." },
         issueId: { type: "number", description: "Issue ID. If omitted, picks next by priority." },
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role. Auto-detected from label if omitted." },
         level: { type: "string", description: "Worker level (junior/mid/senior). Auto-detected if omitted." },
@@ -36,12 +36,12 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
     async execute(_id: string, params: Record<string, unknown>) {
       const issueIdParam = params.issueId as number | undefined;
       const roleParam = params.role as string | undefined;
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const levelParam = (params.level ?? params.tier) as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
 
-      if (!groupId) throw new Error("projectGroupId is required");
-      const { project } = await resolveProject(workspaceDir, groupId);
+      if (!slug) throw new Error("projectSlug is required");
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider } = await resolveProvider(project);
 
       const workflow = await loadWorkflow(workspaceDir, project.name);
@@ -51,11 +51,11 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       let currentLabel: StateLabel;
       if (issueIdParam !== undefined) {
         issue = await provider.getIssue(issueIdParam);
-        const label = provider.getCurrentStateLabel(issue);
+        const label = getCurrentStateLabel(issue.labels, workflow);
         if (!label) throw new Error(`Issue #${issueIdParam} has no recognized state label`);
         currentLabel = label;
       } else {
-        const next = await findNextIssue(provider, roleParam, workflow, groupId);
+        const next = await findNextIssue(provider, roleParam, workflow);
         if (!next) return jsonResult({ success: false, error: `No issues available. Queue is empty.` });
         issue = next.issue;
         currentLabel = next.label;
@@ -97,26 +97,27 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
         }
       }
 
-      // Ensure notify:{groupId} label is on the issue (best-effort — failure must not abort dispatch).
-      // This covers issues created via external tools or before this feature was added.
-      const notifyLabel = getNotifyLabel(groupId);
-      const hasNotify = issue.labels.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
-      if (!hasNotify) {
-        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-          .then(() => provider.addLabel(issue.iid, notifyLabel))
-          .catch(() => {}); // best-effort
+      // Ensure notify label is on the issue (best-effort — failure must not abort dispatch).
+      // Routes notifications to the primary channel for this project.
+      const primaryGroupId = project.channels[0]?.groupId;
+      if (primaryGroupId) {
+        const notifyLabel = getNotifyLabel(primaryGroupId);
+        const hasNotify = issue.labels.some(l => l.startsWith(NOTIFY_LABEL_PREFIX));
+        if (!hasNotify) {
+          provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+            .then(() => provider.addLabel(issue.iid, notifyLabel))
+            .catch(() => {}); // best-effort
+        }
       }
 
       // Dispatch (pass runtime for direct API access)
       const pluginConfig = getPluginConfig(api);
       const dr = await dispatchTask({
-        workspaceDir, agentId: ctx.agentId, groupId, project, issueId: issue.iid,
+        workspaceDir, agentId: ctx.agentId, project, issueId: issue.iid,
         issueTitle: issue.title, issueDescription: issue.description ?? "", issueUrl: issue.web_url,
         role, level: selectedLevel, fromLabel: currentLabel, toLabel: targetLabel,
-        transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,
         pluginConfig,
-        channel: project.channels.find(ch => ch.groupId === groupId)?.channel ?? project.channels[0]?.channel,
         sessionKey: ctx.sessionKey,
         runtime: api.runtime,
       });
@@ -125,7 +126,7 @@ export function createWorkStartTool(api: OpenClawPluginApi) {
       // The heartbeat service fills parallel slots automatically
 
       const output: Record<string, unknown> = {
-        success: true, project: project.name, groupId, issueId: issue.iid, issueTitle: issue.title,
+        success: true, project: project.name, projectSlug: project.slug, issueId: issue.iid, issueTitle: issue.title,
         role, level: dr.level, model: dr.model, sessionAction: dr.sessionAction,
         announcement: dr.announcement, labelTransition: `${currentLabel} → ${targetLabel}`,
         levelReason, levelSource,

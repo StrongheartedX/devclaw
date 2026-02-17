@@ -28,7 +28,7 @@ export function createHealthTool() {
     parameters: {
       type: "object",
       properties: {
-        projectGroupId: { type: "string", description: "Filter to specific project. Omit for all." },
+        projectSlug: { type: "string", description: "Project slug. Omit for all." },
         fix: { type: "boolean", description: "Apply fixes for detected issues. Default: false (read-only)." },
       },
     },
@@ -37,7 +37,7 @@ export function createHealthTool() {
       const workspaceDir = requireWorkspaceDir(ctx);
       const fix = (params.fix as boolean) ?? false;
 
-      const slugOrGroupId = params.projectGroupId as string | undefined;
+      const slugOrGroupId = (params.projectSlug ?? params.projectGroupId) as string | undefined;
 
       const data = await readProjects(workspaceDir);
       
@@ -61,13 +61,11 @@ export function createHealthTool() {
         const project = data.projects[slug];
         if (!project) continue;
         const { provider } = await resolveProvider(project);
-        const primaryGroupId = project.channels[0]?.groupId || slug;
-
         for (const role of Object.keys(project.workers)) {
           // Worker health check (session liveness, label consistency, etc)
           const healthFixes = await checkWorkerHealth({
             workspaceDir,
-            groupId: primaryGroupId,
+            projectSlug: slug,
             project,
             role,
             sessions,
@@ -79,7 +77,7 @@ export function createHealthTool() {
           // Orphaned label scan (active labels with no tracking worker)
           const orphanFixes = await scanOrphanedLabels({
             workspaceDir,
-            groupId: primaryGroupId,
+            projectSlug: slug,
             project,
             role,
             autoFix: fix,

@@ -16,13 +16,12 @@ import {
 import { resolveModel, getFallbackEmoji } from "./roles/index.js";
 import { notify, getNotificationConfig } from "./notify.js";
 import { loadConfig, type ResolvedRoleConfig } from "./config/index.js";
-import { ReviewPolicy, resolveReviewRouting } from "./workflow.js";
+import { ReviewPolicy, resolveReviewRouting, resolveNotifyChannel } from "./workflow.js";
 import { PrState } from "./providers/provider.js";
 
 export type DispatchOpts = {
   workspaceDir: string;
   agentId?: string;
-  groupId: string;
   project: Project;
   issueId: number;
   issueTitle: string;
@@ -35,14 +34,10 @@ export type DispatchOpts = {
   fromLabel: string;
   /** Label to transition TO (e.g. "Doing", "Testing") */
   toLabel: string;
-  /** Function to transition labels (injected to avoid provider dependency) */
-  transitionLabel: (issueId: number, from: string, to: string) => Promise<void>;
-  /** Issue provider for fetching comments */
+  /** Issue provider for issue operations and label transitions */
   provider: import("./providers/provider.js").IssueProvider;
   /** Plugin config for model resolution and notification config */
   pluginConfig?: Record<string, unknown>;
-  /** Channel for notifications (e.g. "telegram", "whatsapp") */
-  channel?: string;
   /** Orchestrator's session key (used as spawnedBy for subagent tracking) */
   sessionKey?: string;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
@@ -66,7 +61,7 @@ export type DispatchResult = {
  */
 export function buildTaskMessage(opts: {
   projectName: string;
-  projectSlug?: string; // Added for new schema (Phase 5)
+  projectSlug: string;
   role: string;
   issueId: number;
   issueTitle: string;
@@ -74,7 +69,6 @@ export function buildTaskMessage(opts: {
   issueUrl: string;
   repo: string;
   baseBranch: string;
-  groupId: string;
   comments?: Array<{ author: string; body: string; created_at: string }>;
   resolvedRole?: ResolvedRoleConfig;
   /** PR context for reviewer role (URL + diff) */
@@ -88,7 +82,7 @@ export function buildTaskMessage(opts: {
 }): string {
   const {
     projectName, projectSlug, role, issueId, issueTitle,
-    issueDescription, issueUrl, repo, baseBranch, groupId,
+    issueDescription, issueUrl, repo, baseBranch,
   } = opts;
 
   const results = opts.resolvedRole?.completionResults ?? [];
@@ -146,16 +140,11 @@ export function buildTaskMessage(opts: {
     }
   }
 
-  const footerLines = [
+  parts.push(
     ``,
     `Repo: ${repo} | Branch: ${baseBranch} | ${issueUrl}`,
-  ];
-  if (projectSlug) {
-    footerLines.push(`Project slug: ${projectSlug}`);
-  }
-  footerLines.push(`Project group ID: ${groupId}`);
-
-  parts.push(...footerLines);
+    `Project: ${projectSlug}`,
+  );
 
   parts.push(
     ``, `---`, ``,
@@ -163,7 +152,7 @@ export function buildTaskMessage(opts: {
     ``,
     `When you finish this task, you MUST call \`work_finish\` with:`,
     `- \`role\`: "${role}"`,
-    `- \`projectGroupId\`: "${groupId}"`,
+    `- \`projectSlug\`: "${projectSlug}"`,
     `- \`result\`: ${availableResults}`,
     `- \`summary\`: brief description of what you did`,
     ``,
@@ -194,9 +183,9 @@ export async function dispatchTask(
   opts: DispatchOpts,
 ): Promise<DispatchResult> {
   const {
-    workspaceDir, agentId, groupId, project, issueId, issueTitle,
+    workspaceDir, agentId, project, issueId, issueTitle,
     issueDescription, issueUrl, role, level, fromLabel, toLabel,
-    transitionLabel, provider, pluginConfig, runtime,
+    provider, pluginConfig, runtime,
   } = opts;
 
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
@@ -260,16 +249,17 @@ export async function dispatchTask(
   const taskMessage = buildTaskMessage({
     projectName: project.name, projectSlug: project.slug, role, issueId,
     issueTitle, issueDescription, issueUrl,
-    repo: project.repo, baseBranch: project.baseBranch, groupId,
+    repo: project.repo, baseBranch: project.baseBranch,
     comments, resolvedRole, prContext, prFeedback,
   });
 
   // Step 1: Transition label (this is the commitment point)
-  await transitionLabel(issueId, fromLabel, toLabel);
+  await provider.transitionLabel(issueId, fromLabel, toLabel);
 
   // Step 1b: Apply role:level label (best-effort — failure must not abort dispatch)
+  let issue: { labels: string[] } | undefined;
   try {
-    const issue = await provider.getIssue(issueId);
+    issue = await provider.getIssue(issueId);
     const oldRoleLabels = issue.labels.filter((l) => l.startsWith(`${role}:`));
     if (oldRoleLabels.length > 0) {
       await provider.removeLabels(issueId, oldRoleLabels);
@@ -292,11 +282,11 @@ export async function dispatchTask(
   // Step 2: Send notification early (before session dispatch which can timeout)
   // This ensures users see the notification even if gateway is slow
   const notifyConfig = getNotificationConfig(pluginConfig);
+  const notifyTarget = resolveNotifyChannel(issue?.labels ?? [], project.channels);
   notify(
     {
       type: "workerStart",
       project: project.name,
-      groupId,
       issueId,
       issueTitle,
       issueUrl,
@@ -307,8 +297,8 @@ export async function dispatchTask(
     {
       workspaceDir,
       config: notifyConfig,
-      groupId,
-      channel: opts.channel ?? "telegram",
+      groupId: notifyTarget?.groupId,
+      channel: notifyTarget?.channel ?? "telegram",
       runtime,
     },
   ).catch((err) => {
@@ -331,13 +321,13 @@ export async function dispatchTask(
 
   // Step 5: Update worker state
   try {
-    await recordWorkerState(workspaceDir, groupId, role, {
+    await recordWorkerState(workspaceDir, project.slug, role, {
       issueId, level, sessionKey, sessionAction, fromLabel,
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
     await auditLog(workspaceDir, "work_start", {
-      project: project.name, groupId, issue: issueId, role,
+      project: project.name, issue: issueId, role,
       warning: "State update failed after successful dispatch",
       error: (err as Error).message, sessionKey,
     });
@@ -345,7 +335,7 @@ export async function dispatchTask(
 
   // Step 6: Audit
   await auditDispatch(workspaceDir, {
-    project: project.name, groupId, issueId, issueTitle,
+    project: project.name, issueId, issueTitle,
     role, level, model, sessionAction, sessionKey,
     fromLabel, toLabel,
   });
@@ -403,10 +393,10 @@ function sendToAgent(
 }
 
 async function recordWorkerState(
-  workspaceDir: string, groupId: string, role: string,
+  workspaceDir: string, slug: string, role: string,
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string },
 ): Promise<void> {
-  await activateWorker(workspaceDir, groupId, role, {
+  await activateWorker(workspaceDir, slug, role, {
     issueId: String(opts.issueId),
     level: opts.level,
     sessionKey: opts.sessionKey,
@@ -418,13 +408,13 @@ async function recordWorkerState(
 async function auditDispatch(
   workspaceDir: string,
   opts: {
-    project: string; groupId: string; issueId: number; issueTitle: string;
+    project: string; issueId: number; issueTitle: string;
     role: string; level: string; model: string; sessionAction: string;
     sessionKey: string; fromLabel: string; toLabel: string;
   },
 ): Promise<void> {
   await auditLog(workspaceDir, "work_start", {
-    project: opts.project, groupId: opts.groupId,
+    project: opts.project,
     issue: opts.issueId, issueTitle: opts.issueTitle,
     role: opts.role, level: opts.level,
     sessionAction: opts.sessionAction, sessionKey: opts.sessionKey,

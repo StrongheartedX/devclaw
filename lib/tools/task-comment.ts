@@ -30,16 +30,16 @@ Use cases:
 - Cross-referencing related issues or PRs
 
 Examples:
-- Simple: { projectGroupId: "-123456789", issueId: 42, body: "Found an edge case with null inputs" }
-- With role: { projectGroupId: "-123456789", issueId: 42, body: "LGTM!", authorRole: "tester" }
-- Detailed: { projectGroupId: "-123456789", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
+- Simple: { projectSlug: "my-webapp", issueId: 42, body: "Found an edge case with null inputs" }
+- With role: { projectSlug: "my-webapp", issueId: 42, body: "LGTM!", authorRole: "tester" }
+- Detailed: { projectSlug: "my-webapp", issueId: 42, body: "## Notes\\n\\n- Tested on staging\\n- All checks passing", authorRole: "developer" }`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "issueId", "body"],
+      required: ["projectSlug", "issueId", "body"],
       properties: {
-        projectGroupId: {
+        projectSlug: {
           type: "string",
-          description: "Telegram/WhatsApp group ID (key in projects.json)",
+          description: "Project slug (e.g. 'my-webapp').",
         },
         issueId: {
           type: "number",
@@ -58,7 +58,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const issueId = params.issueId as number;
       const body = params.body as string;
       const authorRole = (params.authorRole as AuthorRole) ?? undefined;
@@ -68,7 +68,7 @@ Examples:
         throw new Error("Comment body cannot be empty.");
       }
 
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider, type: providerType } = await resolveProvider(project);
 
       const issue = await provider.getIssue(issueId);
@@ -80,7 +80,7 @@ Examples:
       await provider.addComment(issueId, commentBody);
 
       await auditLog(workspaceDir, "task_comment", {
-        project: project.name, groupId, issueId,
+        project: project.name, issueId,
         authorRole: authorRole ?? null,
         bodyPreview: body.slice(0, 100) + (body.length > 100 ? "..." : ""),
         provider: providerType,

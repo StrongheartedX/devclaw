@@ -703,9 +703,8 @@ All issue tracker operations go through the `IssueProvider` interface, defined i
 - `listIssuesByLabel` / `getIssue` — issue queries
 - `transitionLabel` — atomic label state transition (unlabel + label)
 - `closeIssue` / `reopenIssue` — issue lifecycle
-- `hasStateLabel` / `getCurrentStateLabel` — label inspection
 - `getPrStatus` — get PR/MR state (open, merged, approved, none)
-- `hasMergedMR` / `getMergedMRUrl` — MR/PR verification
+- `getMergedMRUrl` — MR/PR verification
 - `addComment` — add comment to issue
 - `healthCheck` — verify provider connectivity
 

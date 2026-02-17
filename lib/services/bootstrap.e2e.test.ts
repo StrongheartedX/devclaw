@@ -32,7 +32,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 1,
       issueTitle: "Add feature",
@@ -42,7 +41,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "medior",
       fromLabel: "To Do",
       toLabel: "Doing",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 
@@ -73,7 +71,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 2,
       issueTitle: "Fix bug",
@@ -83,7 +80,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "junior",
       fromLabel: "To Do",
       toLabel: "Doing",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 
@@ -103,7 +99,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 3,
       issueTitle: "Chore",
@@ -113,7 +108,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "medior",
       fromLabel: "To Do",
       toLabel: "Doing",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 
@@ -149,7 +143,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 4,
       issueTitle: "Test thing",
@@ -159,7 +152,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "medior",
       fromLabel: "To Test",
       toLabel: "Testing",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 
@@ -190,7 +182,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 5,
       issueTitle: "Hyphen test",
@@ -200,7 +191,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "senior",
       fromLabel: "To Do",
       toLabel: "Doing",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 
@@ -221,7 +211,6 @@ describe("E2E bootstrap — hook injection", () => {
     const result = await dispatchTask({
       workspaceDir: h.workspaceDir,
       agentId: "main",
-      groupId: h.groupId,
       project: h.project,
       issueId: 6,
       issueTitle: "Design API",
@@ -231,7 +220,6 @@ describe("E2E bootstrap — hook injection", () => {
       level: "senior",
       fromLabel: "Planning",
       toLabel: "Planning",
-      transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
       provider: h.provider,
     });
 

@@ -21,7 +21,7 @@ import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
 import { loadConfig } from "../config/index.js";
-import { ExecutionMode } from "../workflow.js";
+import { ExecutionMode, resolveNotifyChannel } from "../workflow.js";
 import { notify, getNotificationConfig } from "../notify.js";
 
 // ---------------------------------------------------------------------------
@@ -280,11 +280,9 @@ export async function tick(opts: {
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
 
       // Health pass: auto-fix zombies and stale workers
-      // Use the first channel's groupId for health pass (they share worker state)
-      const primaryGroupId = project.channels[0]?.groupId || slug;
       result.totalHealthFixes += await performHealthPass(
         workspaceDir,
-        primaryGroupId,
+        slug,
         project,
         sessions,
         provider,
@@ -295,18 +293,18 @@ export async function tick(opts: {
       const notifyConfig = getNotificationConfig(pluginConfig);
       result.totalReviewTransitions += await reviewPass({
         workspaceDir,
-        groupId: primaryGroupId,
+        projectName: slug,
         workflow: resolvedConfig.workflow,
         provider,
         repoPath: project.repo,
         gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
         onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
           provider.getIssue(issueId).then((issue) => {
+            const target = resolveNotifyChannel(issue.labels, project.channels);
             notify(
               {
                 type: "prMerged",
                 project: project.name,
-                groupId: primaryGroupId,
                 issueId,
                 issueUrl: issue.web_url,
                 issueTitle: issue.title,
@@ -315,23 +313,24 @@ export async function tick(opts: {
                 sourceBranch,
                 mergedBy: "heartbeat",
               },
-              { workspaceDir, config: notifyConfig, groupId: primaryGroupId, channel: project.channels[0]?.channel ?? "telegram" },
+              { workspaceDir, config: notifyConfig, groupId: target?.groupId, channel: target?.channel ?? "telegram" },
             ).catch(() => {});
           }).catch(() => {});
         },
         onFeedback: (issueId, reason, prUrl, issueTitle, issueUrl) => {
           const type = reason === "changes_requested" ? "changesRequested" as const : "mergeConflict" as const;
+          // No issue labels available in this callback — fall back to primary channel
+          const target = project.channels[0];
           notify(
             {
               type,
               project: project.name,
-              groupId: primaryGroupId,
               issueId,
               issueUrl,
               issueTitle,
               prUrl: prUrl ?? undefined,
             },
-            { workspaceDir, config: notifyConfig, groupId: primaryGroupId, channel: project.channels[0]?.channel ?? "telegram" },
+            { workspaceDir, config: notifyConfig, groupId: target?.groupId, channel: target?.channel ?? "telegram" },
           ).catch(() => {});
         },
       });
@@ -341,7 +340,7 @@ export async function tick(opts: {
       if (remaining <= 0) break;
 
       // Sequential project guard: don't start new projects if one is active
-      const isProjectActive = await checkProjectActive(workspaceDir, primaryGroupId);
+      const isProjectActive = await checkProjectActive(workspaceDir, slug);
       if (projectExecution === ExecutionMode.SEQUENTIAL && !isProjectActive && activeProjects >= 1) {
         result.totalSkipped++;
         continue;
@@ -350,7 +349,7 @@ export async function tick(opts: {
       // Tick pass: fill free worker slots
       const tickResult = await projectTick({
         workspaceDir,
-        groupId: primaryGroupId,
+        projectSlug: slug,
         agentId,
         pluginConfig,
         maxPickups: remaining,
@@ -392,7 +391,7 @@ export async function tick(opts: {
  */
 async function performHealthPass(
   workspaceDir: string,
-  groupId: string,
+  projectSlug: string,
   project: any,
   sessions: SessionLookup | null,
   provider: import("../providers/provider.js").IssueProvider,
@@ -404,7 +403,7 @@ async function performHealthPass(
     // Check worker health (session liveness, label consistency, etc)
     const healthFixes = await checkWorkerHealth({
       workspaceDir,
-      groupId,
+      projectSlug,
       project,
       role,
       sessions,
@@ -417,7 +416,7 @@ async function performHealthPass(
     // Scan for orphaned labels (active labels with no tracking worker)
     const orphanFixes = await scanOrphanedLabels({
       workspaceDir,
-      groupId,
+      projectSlug,
       project,
       role,
       autoFix: true,
@@ -431,11 +430,10 @@ async function performHealthPass(
 
 /**
  * Check if a project has any active worker.
- * Accepts slug or groupId for backward compatibility.
  */
-async function checkProjectActive(workspaceDir: string, slugOrGroupId: string): Promise<boolean> {
+async function checkProjectActive(workspaceDir: string, slug: string): Promise<boolean> {
   const data = await readProjects(workspaceDir);
-  const project = getProject(data, slugOrGroupId);
+  const project = getProject(data, slug);
   if (!project) return false;
   return Object.values(project.workers).some(w => w.active);
 }

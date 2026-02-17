@@ -17,9 +17,11 @@ import {
   getCompletionRule,
   getNextStateDescription,
   getCompletionEmoji,
+  resolveNotifyChannel,
   type CompletionRule,
   type WorkflowConfig,
 } from "../workflow.js";
+import type { Channel } from "../projects.js";
 
 export type { CompletionRule };
 
@@ -50,7 +52,7 @@ export function getRule(
  */
 export async function executeCompletion(opts: {
   workspaceDir: string;
-  groupId: string;
+  projectSlug: string;
   role: string;
   result: string;
   issueId: number;
@@ -59,7 +61,7 @@ export async function executeCompletion(opts: {
   provider: IssueProvider;
   repoPath: string;
   projectName: string;
-  channel?: string;
+  channels: Channel[];
   pluginConfig?: Record<string, unknown>;
   /** Plugin runtime for direct API access (avoids CLI subprocess timeouts) */
   runtime?: PluginRuntime;
@@ -67,8 +69,8 @@ export async function executeCompletion(opts: {
   workflow?: WorkflowConfig;
 }): Promise<CompletionOutput> {
   const {
-    workspaceDir, groupId, role, result, issueId, summary, provider,
-    repoPath, projectName, channel, pluginConfig, runtime,
+    workspaceDir, projectSlug, role, result, issueId, summary, provider,
+    repoPath, projectName, channels, pluginConfig, runtime,
     workflow = DEFAULT_WORKFLOW,
   } = opts;
 
@@ -121,8 +123,9 @@ export async function executeCompletion(opts: {
     }
   }
 
-  // Get issue early (for URL in notification)
+  // Get issue early (for URL in notification + channel routing)
   const issue = await provider.getIssue(issueId);
+  const notifyTarget = resolveNotifyChannel(issue.labels, channels);
 
   // Get next state description from workflow
   const nextState = getNextStateDescription(workflow, role, result);
@@ -133,7 +136,6 @@ export async function executeCompletion(opts: {
     {
       type: "workerComplete",
       project: projectName,
-      groupId,
       issueId,
       issueUrl: issue.web_url,
       role,
@@ -145,8 +147,8 @@ export async function executeCompletion(opts: {
     {
       workspaceDir,
       config: notifyConfig,
-      groupId,
-      channel: channel ?? "telegram",
+      groupId: notifyTarget?.groupId,
+      channel: notifyTarget?.channel ?? "telegram",
       runtime,
     },
   ).catch((err) => {
@@ -159,7 +161,6 @@ export async function executeCompletion(opts: {
       {
         type: "prMerged",
         project: projectName,
-        groupId,
         issueId,
         issueUrl: issue.web_url,
         issueTitle: issue.title,
@@ -168,14 +169,14 @@ export async function executeCompletion(opts: {
         sourceBranch,
         mergedBy: "pipeline",
       },
-      { workspaceDir, config: notifyConfig, groupId, channel: channel ?? "telegram", runtime },
+      { workspaceDir, config: notifyConfig, groupId: notifyTarget?.groupId, channel: notifyTarget?.channel ?? "telegram", runtime },
     ).catch((err) => {
       auditLog(workspaceDir, "pipeline_warning", { step: "mergeNotify", issue: issueId, role, error: (err as Error).message ?? String(err) }).catch(() => {});
     });
   }
 
   // Deactivate worker + transition label
-  await deactivateWorker(workspaceDir, groupId, role);
+  await deactivateWorker(workspaceDir, projectSlug, role);
   await provider.transitionLabel(issueId, rule.from as StateLabel, rule.to as StateLabel);
 
   // Execute post-transition actions
@@ -200,7 +201,6 @@ export async function executeCompletion(opts: {
         {
           type: "reviewNeeded",
           project: projectName,
-          groupId,
           issueId,
           issueUrl: updated.web_url,
           issueTitle: updated.title,
@@ -210,8 +210,8 @@ export async function executeCompletion(opts: {
         {
           workspaceDir,
           config: notifyConfig,
-          groupId,
-          channel: channel ?? "telegram",
+          groupId: notifyTarget?.groupId,
+          channel: notifyTarget?.channel ?? "telegram",
           runtime,
         },
       ).catch((err) => {

@@ -33,11 +33,11 @@ Examples:
 - User says "create and start working": { title: "Implement auth", description: "...", label: "To Do" }`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "title"],
+      required: ["projectSlug", "title"],
       properties: {
-        projectGroupId: {
+        projectSlug: {
           type: "string",
-          description: "Telegram/WhatsApp group ID for the project",
+          description: "Project slug (e.g. 'my-webapp')",
         },
         title: {
           type: "string",
@@ -65,7 +65,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const title = params.title as string;
       const description = (params.description as string) ?? "";
       const label = (params.label as StateLabel) ?? INITIAL_LABEL;
@@ -73,20 +73,22 @@ Examples:
       const pickup = (params.pickup as boolean) ?? false;
       const workspaceDir = requireWorkspaceDir(ctx);
 
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider, type: providerType } = await resolveProvider(project);
 
       const issue = await provider.createIssue(title, description, label, assignees);
 
-      // Apply notify:{groupId} label for multi-group isolation (best-effort).
-      // Ensures this issue is only processed by the group that created it.
-      const notifyLabel = getNotifyLabel(groupId);
-      provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-        .then(() => provider.addLabel(issue.iid, notifyLabel))
-        .catch(() => {}); // best-effort — must not fail the whole task_create
+      // Apply notify label for channel routing (best-effort).
+      const primaryGroupId = project.channels[0]?.groupId;
+      if (primaryGroupId) {
+        const notifyLabel = getNotifyLabel(primaryGroupId);
+        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+          .then(() => provider.addLabel(issue.iid, notifyLabel))
+          .catch(() => {}); // best-effort
+      }
 
       await auditLog(workspaceDir, "task_create", {
-        project: project.name, groupId, issueId: issue.iid,
+        project: project.name, issueId: issue.iid,
         title, label, provider: providerType, pickup,
       });
 

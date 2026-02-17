@@ -41,13 +41,11 @@ export type ProviderCall =
   | { method: "removeLabels"; args: { issueId: number; labels: string[] } }
   | { method: "closeIssue"; args: { issueId: number } }
   | { method: "reopenIssue"; args: { issueId: number } }
-  | { method: "hasMergedMR"; args: { issueId: number } }
   | { method: "getMergedMRUrl"; args: { issueId: number } }
   | { method: "getPrStatus"; args: { issueId: number } }
   | { method: "mergePr"; args: { issueId: number } }
   | { method: "getPrDiff"; args: { issueId: number } }
   | { method: "getPrReviewComments"; args: { issueId: number } }
-  | { method: "reactToPrComment"; args: { issueId: number; commentId: number; emoji: string } }
   | { method: "addComment"; args: { issueId: number; body: string } }
   | { method: "editIssue"; args: { issueId: number; updates: { title?: string; body?: string } } }
   | { method: "healthCheck"; args: {} };
@@ -230,20 +228,6 @@ export class TestProvider implements IssueProvider {
     if (issue) issue.state = "opened";
   }
 
-  hasStateLabel(issue: Issue, expected: StateLabel): boolean {
-    return issue.labels.includes(expected);
-  }
-
-  getCurrentStateLabel(issue: Issue): StateLabel | null {
-    const stateLabels = getStateLabels(this.workflow);
-    return stateLabels.find((l) => issue.labels.includes(l)) ?? null;
-  }
-
-  async hasMergedMR(issueId: number): Promise<boolean> {
-    this.calls.push({ method: "hasMergedMR", args: { issueId } });
-    return this.mergedMrUrls.has(issueId);
-  }
-
   async getMergedMRUrl(issueId: number): Promise<string | null> {
     this.calls.push({ method: "getMergedMRUrl", args: { issueId } });
     return this.mergedMrUrls.get(issueId) ?? null;
@@ -273,10 +257,6 @@ export class TestProvider implements IssueProvider {
 
   async getPrReviewComments(_issueId: number): Promise<import("../providers/provider.js").PrReviewComment[]> {
     return [];
-  }
-
-  async reactToPrComment(_issueId: number, _commentId: number, _emoji: string): Promise<void> {
-    // no-op in tests
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

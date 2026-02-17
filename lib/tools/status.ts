@@ -21,13 +21,13 @@ export function createStatusTool(api: OpenClawPluginApi) {
     parameters: {
       type: "object",
       properties: {
-        projectGroupId: { type: "string", description: "Filter to specific project. Omit for all." },
+        projectSlug: { type: "string", description: "Project slug. Omit for all." },
       },
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
       const workspaceDir = requireWorkspaceDir(ctx);
-      const slugOrGroupId = params.projectGroupId as string | undefined;
+      const slugOrGroupId = (params.projectSlug ?? params.projectGroupId) as string | undefined;
 
       const pluginConfig = getPluginConfig(api);
       const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;

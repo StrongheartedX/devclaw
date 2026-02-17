@@ -186,21 +186,21 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 
 When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
-- **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectGroupId: "<from task message>", summary: "<brief summary>" })\`
-- **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
-- **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectGroupId: "<from task message>", summary: "<what needs human input>" })\`
-- **REVIEWER approve:** \`work_finish({ role: "reviewer", result: "approve", projectGroupId: "<from task message>", summary: "<what you checked>" })\`
-- **REVIEWER reject:** \`work_finish({ role: "reviewer", result: "reject", projectGroupId: "<from task message>", summary: "<specific issues>" })\`
-- **Architect done:** \`work_finish({ role: "architect", result: "done", projectGroupId: "<from task message>", summary: "<recommendation summary>" })\`
+- **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectSlug: "<from task message>", summary: "<brief summary>" })\`
+- **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectSlug: "<from task message>", summary: "<brief summary>" })\`
+- **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectSlug: "<from task message>", summary: "<specific issues>" })\`
+- **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectSlug: "<from task message>", summary: "<what needs human input>" })\`
+- **REVIEWER approve:** \`work_finish({ role: "reviewer", result: "approve", projectSlug: "<from task message>", summary: "<what you checked>" })\`
+- **REVIEWER reject:** \`work_finish({ role: "reviewer", result: "reject", projectSlug: "<from task message>", summary: "<specific issues>" })\`
+- **Architect done:** \`work_finish({ role: "architect", result: "done", projectSlug: "<from task message>", summary: "<recommendation summary>" })\`
 
-The \`projectGroupId\` is included in your task message.
+The \`projectSlug\` is included in your task message.
 
 ### Filing Follow-Up Issues
 
 If you discover unrelated bugs or needed improvements during your work, call \`task_create\` to file them:
 
-\`task_create({ projectGroupId: "<from task message>", title: "Bug: ...", description: "..." })\`
+\`task_create({ projectSlug: "<from task message>", title: "Bug: ...", description: "..." })\`
 
 ### Tools You Should NOT Use
 
@@ -303,7 +303,7 @@ All roles (Developer, Tester, Architect) use the same level scheme. Levels descr
 1. Use \`status\` to see what's available
 2. Priority: \`To Improve\` (fix failures) > \`To Test\` (QA) > \`To Do\` (new work)
 3. Evaluate complexity, choose developer level
-4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectGroupId\`, \`level\`
+4. Call \`work_start\` with \`issueId\`, \`role\`, \`projectSlug\`, \`level\`
 5. **Always include the issue URL** in your response — copy it from \`announcement\` or the tool response
 
 ### When Work Completes

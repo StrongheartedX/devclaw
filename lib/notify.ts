@@ -19,7 +19,6 @@ export type NotifyEvent =
   | {
       type: "workerStart";
       project: string;
-      groupId: string;
       issueId: number;
       issueTitle: string;
       issueUrl: string;
@@ -30,7 +29,6 @@ export type NotifyEvent =
   | {
       type: "workerComplete";
       project: string;
-      groupId: string;
       issueId: number;
       issueUrl: string;
       role: string;
@@ -42,7 +40,6 @@ export type NotifyEvent =
   | {
       type: "reviewNeeded";
       project: string;
-      groupId: string;
       issueId: number;
       issueUrl: string;
       issueTitle: string;
@@ -52,7 +49,6 @@ export type NotifyEvent =
   | {
       type: "prMerged";
       project: string;
-      groupId: string;
       issueId: number;
       issueUrl: string;
       issueTitle: string;
@@ -64,7 +60,6 @@ export type NotifyEvent =
   | {
       type: "changesRequested";
       project: string;
-      groupId: string;
       issueId: number;
       issueUrl: string;
       issueTitle: string;
@@ -73,7 +68,6 @@ export type NotifyEvent =
   | {
       type: "mergeConflict";
       project: string;
-      groupId: string;
       issueId: number;
       issueUrl: string;
       issueTitle: string;
@@ -251,7 +245,7 @@ export async function notify(
 
   const channel = opts.channel ?? "telegram";
   const message = buildMessage(event);
-  const target = opts.groupId ?? (event as { groupId?: string }).groupId;
+  const target = opts.groupId;
 
   if (!target) {
     await auditLog(opts.workspaceDir, "notify_skip", {

@@ -38,6 +38,7 @@ import {
   getActiveLabel,
   getRevertLabel,
   hasWorkflowStates,
+  getCurrentStateLabel,
   type WorkflowConfig,
   type Role,
 } from "../workflow.js";
@@ -58,7 +59,7 @@ export type HealthIssue = {
     | "orphaned_session";    // Case 8: gateway session exists but not tracked in projects.json
   severity: "critical" | "warning";
   project: string;
-  groupId: string;
+  projectSlug: string;
   role: Role;
   message: string;
   level?: string | null;
@@ -192,7 +193,7 @@ async function fetchIssue(
 
 export async function checkWorkerHealth(opts: {
   workspaceDir: string;
-  groupId: string;
+  projectSlug: string;
   project: Project;
   role: Role;
   autoFix: boolean;
@@ -204,7 +205,7 @@ export async function checkWorkerHealth(opts: {
   staleWorkerHours?: number;
 }): Promise<HealthFix[]> {
   const {
-    workspaceDir, groupId, project, role, autoFix, provider, sessions,
+    workspaceDir, projectSlug, project, role, autoFix, provider, sessions,
     workflow = DEFAULT_WORKFLOW,
     staleWorkerHours = 2,
   } = opts;
@@ -237,7 +238,7 @@ export async function checkWorkerHealth(opts: {
   let currentLabel: StateLabel | null = null;
   if (issueIdNum) {
     issue = await fetchIssue(provider, issueIdNum);
-    currentLabel = issue ? provider.getCurrentStateLabel(issue) : null;
+    currentLabel = issue ? getCurrentStateLabel(issue.labels, workflow) : null;
   }
 
   // Helper to revert label
@@ -261,7 +262,7 @@ export async function checkWorkerHealth(opts: {
     if (clearSessions && worker.level) {
       updates.sessions = { ...worker.sessions, [worker.level]: null };
     }
-    await updateWorker(workspaceDir, groupId, role, updates);
+    await updateWorker(workspaceDir, projectSlug, role, updates);
   }
 
   // ---------------------------------------------------------------------------
@@ -273,7 +274,7 @@ export async function checkWorkerHealth(opts: {
         type: "issue_gone",
         severity: "critical",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         level: worker.level,
         sessionKey,
@@ -299,7 +300,7 @@ export async function checkWorkerHealth(opts: {
         type: "label_mismatch",
         severity: "critical",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         level: worker.level,
         sessionKey,
@@ -330,7 +331,7 @@ export async function checkWorkerHealth(opts: {
         type: "session_dead",
         severity: "critical",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         sessionKey,
         level: worker.level,
@@ -357,7 +358,7 @@ export async function checkWorkerHealth(opts: {
         type: "session_dead",
         severity: "critical",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         level: worker.level,
         issueId: worker.issueId,
@@ -388,7 +389,7 @@ export async function checkWorkerHealth(opts: {
           type: "stale_worker",
           severity: "warning",
           project: project.name,
-          groupId,
+          projectSlug,
           role,
           hoursActive: Math.round(hours * 10) / 10,
           sessionKey,
@@ -417,7 +418,7 @@ export async function checkWorkerHealth(opts: {
         type: "stuck_label",
         severity: "critical",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         issueId: worker.issueId,
         expectedLabel: queueLabel,
@@ -430,7 +431,7 @@ export async function checkWorkerHealth(opts: {
       await revertLabel(fix, expectedLabel, queueLabel);
       // Also clear the issueId if present
       if (worker.issueId) {
-        await updateWorker(workspaceDir, groupId, role, { issueId: null });
+        await updateWorker(workspaceDir, projectSlug, role, { issueId: null });
       }
       fix.fixed = true;
     }
@@ -447,7 +448,7 @@ export async function checkWorkerHealth(opts: {
         type: "orphan_issue_id",
         severity: "warning",
         project: project.name,
-        groupId,
+        projectSlug,
         role,
         issueId: worker.issueId,
         message: `${role.toUpperCase()} inactive but still has issueId "${worker.issueId}"`,
@@ -455,7 +456,7 @@ export async function checkWorkerHealth(opts: {
       fixed: false,
     };
     if (autoFix) {
-      await updateWorker(workspaceDir, groupId, role, { issueId: null });
+      await updateWorker(workspaceDir, projectSlug, role, { issueId: null });
       fix.fixed = true;
     }
     fixes.push(fix);
@@ -479,7 +480,7 @@ export async function checkWorkerHealth(opts: {
  */
 export async function scanOrphanedLabels(opts: {
   workspaceDir: string;
-  groupId: string;
+  projectSlug: string;
   project: Project;
   role: Role;
   autoFix: boolean;
@@ -488,7 +489,7 @@ export async function scanOrphanedLabels(opts: {
   workflow?: WorkflowConfig;
 }): Promise<HealthFix[]> {
   const {
-    workspaceDir, groupId, project, role, autoFix, provider,
+    workspaceDir, projectSlug, project, role, autoFix, provider,
     workflow = DEFAULT_WORKFLOW,
   } = opts;
 
@@ -526,7 +527,7 @@ export async function scanOrphanedLabels(opts: {
           type: "orphaned_label",
           severity: "critical",
           project: project.name,
-          groupId,
+          projectSlug,
           role,
           issueId: issueIdStr,
           expectedLabel: queueLabel,
@@ -619,7 +620,7 @@ export async function scanOrphanedSessions(opts: {
         type: "orphaned_session",
         severity: "warning",
         project: "global",
-        groupId: "global",
+        projectSlug: "global",
         role: "developer", // Placeholder — role is embedded in session key
         sessionKey: key,
         message: `Gateway session "${key}" is not tracked by any project worker`,

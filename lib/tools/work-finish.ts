@@ -24,11 +24,11 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
     description: `Complete a task: Developer done (PR created, goes to review) or blocked. Tester pass/fail/refine/blocked. Reviewer approve/reject/blocked. Architect done/blocked. Handles label transition, state update, issue close/reopen, notifications, and audit logging.`,
     parameters: {
       type: "object",
-      required: ["role", "result", "projectGroupId"],
+      required: ["role", "result", "projectSlug"],
       properties: {
         role: { type: "string", enum: getAllRoleIds(), description: "Worker role" },
         result: { type: "string", enum: ["done", "pass", "fail", "refine", "blocked", "approve", "reject"], description: "Completion result" },
-        projectGroupId: { type: "string", description: "Project group ID" },
+        projectSlug: { type: "string", description: "Project slug (e.g. 'my-webapp')" },
         summary: { type: "string", description: "Brief summary" },
         prUrl: { type: "string", description: "PR/MR URL (auto-detected if omitted)" },
       },
@@ -37,7 +37,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
     async execute(_id: string, params: Record<string, unknown>) {
       const role = params.role as string;
       const result = params.result as string;
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const summary = params.summary as string | undefined;
       const prUrl = params.prUrl as string | undefined;
       const workspaceDir = requireWorkspaceDir(ctx);
@@ -49,7 +49,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       }
 
       // Resolve project + worker
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const worker = getWorker(project, role);
       if (!worker.active) throw new Error(`${role.toUpperCase()} worker not active on ${project.name}`);
 
@@ -66,21 +66,21 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const pluginConfig = getPluginConfig(api);
 
       const completion = await executeCompletion({
-        workspaceDir, groupId, role, result, issueId, summary, prUrl, provider, repoPath,
+        workspaceDir, projectSlug: project.slug, role, result, issueId, summary, prUrl, provider, repoPath,
         projectName: project.name,
-        channel: project.channels.find(ch => ch.groupId === groupId)?.channel ?? project.channels[0]?.channel,
+        channels: project.channels,
         pluginConfig,
         runtime: api.runtime,
         workflow,
       });
 
       await auditLog(workspaceDir, "work_finish", {
-        project: project.name, groupId, issue: issueId, role, result,
+        project: project.name, issue: issueId, role, result,
         summary: summary ?? null, labelTransition: completion.labelTransition,
       });
 
       return jsonResult({
-        success: true, project: project.name, groupId, issueId, role, result,
+        success: true, project: project.name, projectSlug: project.slug, issueId, role, result,
         ...completion,
       });
     },

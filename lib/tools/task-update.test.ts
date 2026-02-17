@@ -12,7 +12,7 @@ import { detectLevelFromLabels, detectRoleLevelFromLabels, detectStepRouting } f
 describe("task_update tool", () => {
   it("has correct schema", () => {
     // state is now optional — at least one of state or level required
-    const requiredParams = ["projectGroupId", "issueId"];
+    const requiredParams = ["projectSlug", "issueId"];
     assert.strictEqual(requiredParams.length, 2);
   });
 

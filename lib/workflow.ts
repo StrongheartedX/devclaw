@@ -258,6 +258,15 @@ export function getStateLabels(workflow: WorkflowConfig): string[] {
 }
 
 /**
+ * Find the current workflow state label on an issue.
+ * Pure utility — no provider dependency.
+ */
+export function getCurrentStateLabel(labels: string[], workflow: WorkflowConfig): string | null {
+  const stateLabels = getStateLabels(workflow);
+  return stateLabels.find((l) => labels.includes(l)) ?? null;
+}
+
+/**
  * Get the initial state label (the first state in the workflow, e.g. "Planning").
  * Used by task_edit_body to enforce edits only in the initial state.
  */
@@ -298,13 +307,13 @@ export const STEP_ROUTING_LABELS: readonly string[] = [
 const STEP_ROUTING_COLOR = "#d93f0b";
 
 // ---------------------------------------------------------------------------
-// Group isolation — notify:{groupId} labels
+// Notify labels — channel routing for notifications
 // ---------------------------------------------------------------------------
 
 /**
- * Prefix for group-isolation labels.
+ * Prefix for notify labels.
  * Format: "notify:{groupId}" (e.g., "notify:-5176490302").
- * Purpose: ensures each issue is only processed by the group that created/owns it.
+ * Purpose: routes notifications to the channel that owns the issue.
  * Style: light grey — low visual weight, informational only.
  */
 export const NOTIFY_LABEL_PREFIX = "notify:";
@@ -318,23 +327,20 @@ export function getNotifyLabel(groupId: string): string {
 }
 
 /**
- * Filter issues by group ownership using notify labels.
- *
- * - Issues tagged `notify:{groupId}` → included for that group
- * - Issues tagged `notify:{otherGroupId}` → excluded
- * - Issues with NO notify label (orphans, pre-fix) → included for ALL groups
- *   (first group in sequential tick processing wins via atomic label transition)
+ * Resolve which channel should receive notifications for an issue.
+ * Reads the `notify:{groupId}` label to find the owning channel.
+ * Falls back to channels[0] (primary) if no notify label is present.
  */
-export function filterIssuesByGroup<T extends { labels: string[] }>(
-  issues: T[],
-  groupId: string,
-): T[] {
-  const notifyLabel = getNotifyLabel(groupId);
-  return issues.filter((issue) => {
-    const hasAnyNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
-    if (!hasAnyNotify) return true; // orphan: backward compat, all groups can see it
-    return issue.labels.includes(notifyLabel);
-  });
+export function resolveNotifyChannel(
+  issueLabels: string[],
+  channels: Array<{ groupId: string; channel: string }>,
+): { groupId: string; channel: string } | undefined {
+  const notifyLabel = issueLabels.find((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
+  if (notifyLabel) {
+    const taggedGroupId = notifyLabel.slice(NOTIFY_LABEL_PREFIX.length);
+    return channels.find((ch) => ch.groupId === taggedGroupId) ?? channels[0];
+  }
+  return channels[0];
 }
 
 /**

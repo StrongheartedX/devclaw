@@ -237,18 +237,6 @@ export class GitHubProvider implements IssueProvider {
   async closeIssue(issueId: number): Promise<void> { await this.gh(["issue", "close", String(issueId)]); }
   async reopenIssue(issueId: number): Promise<void> { await this.gh(["issue", "reopen", String(issueId)]); }
 
-  hasStateLabel(issue: Issue, expected: StateLabel): boolean { return issue.labels.includes(expected); }
-
-  getCurrentStateLabel(issue: Issue): StateLabel | null {
-    const stateLabels = getStateLabels(this.workflow);
-    return stateLabels.find((l) => issue.labels.includes(l)) ?? null;
-  }
-
-  async hasMergedMR(issueId: number): Promise<boolean> {
-    const prs = await this.findPrsForIssue(issueId, "merged", "title,body,headRefName");
-    return prs.length > 0;
-  }
-
   async getMergedMRUrl(issueId: number): Promise<string | null> {
     type MergedPr = { title: string; body: string; headRefName: string; url: string; mergedAt: string };
     const prs = await this.findPrsForIssue<MergedPr>(issueId, "merged", "title,body,headRefName,url,mergedAt");
@@ -371,18 +359,6 @@ export class GitHubProvider implements IssueProvider {
     // Sort by date
     comments.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     return comments;
-  }
-
-  async reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void> {
-    try {
-      // Try PR review comment first (inline comments)
-      await this.gh(["api", `repos/:owner/:repo/pulls/comments/${commentId}/reactions`, "-f", `content=${emoji}`, "-X", "POST"]);
-    } catch {
-      try {
-        // Fall back to issue comment reaction
-        await this.gh(["api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`, "-f", `content=${emoji}`, "-X", "POST"]);
-      } catch { /* best-effort */ }
-    }
   }
 
   async addComment(issueId: number, body: string): Promise<void> {

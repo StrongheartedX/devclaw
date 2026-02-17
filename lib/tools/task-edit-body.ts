@@ -13,7 +13,7 @@ import { jsonResult } from "openclaw/plugin-sdk";
 import type { ToolContext } from "../types.js";
 import { log as auditLog } from "../audit.js";
 import { loadConfig } from "../config/index.js";
-import { getInitialStateLabel } from "../workflow.js";
+import { getInitialStateLabel, getCurrentStateLabel } from "../workflow.js";
 import { requireWorkspaceDir, resolveProject, resolveProvider } from "../tool-helpers.js";
 
 export function createTaskEditBodyTool(_api: OpenClawPluginApi) {
@@ -26,16 +26,16 @@ Logs the edit to the audit trail with timestamp, caller, and a diff summary.
 Optionally posts an auto-comment on the issue for traceability.
 
 Examples:
-- Fix typo: { projectGroupId: "-123456789", issueId: 42, title: "Fix login timeout bug" }
-- Clarify scope: { projectGroupId: "-123456789", issueId: 42, body: "Updated requirements...", reason: "Clarified after meeting" }
-- Silent edit: { projectGroupId: "-123456789", issueId: 42, body: "...", addComment: false }`,
+- Fix typo: { projectSlug: "my-webapp", issueId: 42, title: "Fix login timeout bug" }
+- Clarify scope: { projectSlug: "my-webapp", issueId: 42, body: "Updated requirements...", reason: "Clarified after meeting" }
+- Silent edit: { projectSlug: "my-webapp", issueId: 42, body: "...", addComment: false }`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "issueId"],
+      required: ["projectSlug", "issueId"],
       properties: {
-        projectGroupId: {
+        projectSlug: {
           type: "string",
-          description: "Telegram/WhatsApp group ID (key in projects.json)",
+          description: "Project slug (e.g. 'my-webapp').",
         },
         issueId: {
           type: "number",
@@ -61,7 +61,7 @@ Examples:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const issueId = params.issueId as number;
       const newTitle = (params.title as string | undefined);
       const newBody = (params.body as string | undefined);
@@ -73,7 +73,7 @@ Examples:
         throw new Error("At least one of 'title' or 'body' must be provided.");
       }
 
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider, type: providerType } = await resolveProvider(project);
 
       // Determine editable states from per-project workflow config.
@@ -91,7 +91,7 @@ Examples:
 
       // Fetch current issue
       const issue = await provider.getIssue(issueId);
-      const currentState = provider.getCurrentStateLabel(issue);
+      const currentState = getCurrentStateLabel(issue.labels, resolvedConfig.workflow);
 
       // Enforce editable-states constraint
       if (!currentState || !editableStates.includes(currentState)) {
@@ -155,7 +155,6 @@ Examples:
       // Audit log
       await auditLog(workspaceDir, "task_edit_body", {
         project: project.name,
-        groupId,
         issueId,
         issueUrl: updatedIssue.web_url,
         provider: providerType,

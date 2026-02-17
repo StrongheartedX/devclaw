@@ -44,7 +44,6 @@ describe("E2E pipeline", () => {
       const result = await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "test-agent",
-        groupId: h.groupId,
         project: h.project,
         issueId: 42,
         issueTitle: "Add login page",
@@ -54,7 +53,6 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -83,7 +81,7 @@ describe("E2E pipeline", () => {
       // Verify task message contains issue context
       const taskMsg = h.commands.taskMessages()[0];
       assert.ok(taskMsg.includes("Add login page"), "Task message should include title");
-      assert.ok(taskMsg.includes(h.groupId), "Task message should include groupId");
+      assert.ok(taskMsg.includes(h.project.slug), "Task message should include project slug");
       assert.ok(taskMsg.includes("work_finish"), "Task message should reference work_finish");
     });
 
@@ -95,7 +93,6 @@ describe("E2E pipeline", () => {
 
       await dispatchTask({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
         project: h.project,
         issueId: 42,
         issueTitle: "Add login page",
@@ -105,7 +102,6 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -129,7 +125,6 @@ describe("E2E pipeline", () => {
       const result = await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "test-agent",
-        groupId: h.groupId,
         project: h.project,
         issueId: 42,
         issueTitle: "Quick fix",
@@ -139,7 +134,6 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -164,7 +158,8 @@ describe("E2E pipeline", () => {
     it("should transition Doing → To Review", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "done",
         issueId: 10,
@@ -206,7 +201,8 @@ describe("E2E pipeline", () => {
 
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "approve",
         issueId: 25,
@@ -227,7 +223,8 @@ describe("E2E pipeline", () => {
     it("reviewer:reject should transition Reviewing → To Improve", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "reject",
         issueId: 25,
@@ -245,7 +242,8 @@ describe("E2E pipeline", () => {
     it("reviewer:blocked should transition Reviewing → Refining", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "blocked",
         issueId: 25,
@@ -278,7 +276,8 @@ describe("E2E pipeline", () => {
     it("should transition Testing → Done, close issue", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "pass",
         issueId: 30,
@@ -319,7 +318,8 @@ describe("E2E pipeline", () => {
     it("should transition Testing → To Improve, reopen issue", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "fail",
         issueId: 40,
@@ -358,7 +358,8 @@ describe("E2E pipeline", () => {
     it("should transition Doing → Refining, no close/reopen", async () => {
       const output = await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "blocked",
         issueId: 50,
@@ -392,7 +393,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -418,7 +419,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -438,7 +439,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -462,7 +463,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -488,7 +489,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -511,7 +512,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -532,7 +533,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -560,7 +561,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
-        groupId: h.groupId,
         project: h.project,
         issueId: 100,
         issueTitle: "Build dashboard",
@@ -570,14 +570,14 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
       // 3. Developer done → To Review
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "done",
         issueId: 100,
@@ -599,7 +599,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "approve",
         issueId: 100,
@@ -620,7 +621,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "pass",
         issueId: 100,
@@ -644,7 +646,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
-        groupId: h.groupId,
         project: h.project,
         issueId: 200,
         issueTitle: "Auth refactor",
@@ -654,14 +655,14 @@ describe("E2E pipeline", () => {
         level: "senior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
       // 2. Developer done → To Review (same state regardless of level)
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "done",
         issueId: 200,
@@ -680,7 +681,7 @@ describe("E2E pipeline", () => {
 
       const transitions = await reviewPass({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectName: h.project.name,
         workflow: DEFAULT_WORKFLOW,
         provider: h.provider,
         repoPath: "/tmp/test-repo",
@@ -699,7 +700,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "pass",
         issueId: 200,
@@ -723,7 +725,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
-        groupId: h.groupId,
         project: h.project,
         issueId: 300,
         issueTitle: "Payment flow",
@@ -733,14 +734,14 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
       // 2. Developer done → To Review
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "done",
         issueId: 300,
@@ -761,7 +762,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "reject",
         issueId: 300,
@@ -778,7 +780,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "main",
-        groupId: h.groupId,
         project: getProject(await readProjects(h.workspaceDir), h.groupId)!,
         issueId: 300,
         issueTitle: "Payment flow",
@@ -788,13 +789,13 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Improve",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "developer",
         result: "done",
         issueId: 300,
@@ -815,7 +816,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "reviewer",
         result: "approve",
         issueId: 300,
@@ -836,7 +838,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "pass",
         issueId: 300,
@@ -867,7 +870,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
         provider: h.provider,
@@ -885,7 +888,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         agentId: "test-agent",
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.AGENT),
@@ -902,7 +905,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         agentId: "test-agent",
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.AUTO),
@@ -920,7 +923,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         targetRole: "reviewer",
         workflow: workflowWithPolicy(ReviewPolicy.AUTO),
         provider: h.provider,
@@ -939,7 +942,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         agentId: "test-agent",
         workflow: workflowWithPolicy(ReviewPolicy.HUMAN),
         provider: h.provider,
@@ -964,7 +967,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "test-agent",
-        groupId: h.groupId,
         project: h.project,
         issueId: 400,
         issueTitle: "Label test",
@@ -974,7 +976,6 @@ describe("E2E pipeline", () => {
         level: "senior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -992,7 +993,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "test-agent",
-        groupId: h.groupId,
         project: h.project,
         issueId: 404,
         issueTitle: "Junior task",
@@ -1002,7 +1002,6 @@ describe("E2E pipeline", () => {
         level: "junior",
         fromLabel: "To Do",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -1019,7 +1018,6 @@ describe("E2E pipeline", () => {
       await dispatchTask({
         workspaceDir: h.workspaceDir,
         agentId: "test-agent",
-        groupId: h.groupId,
         project: h.project,
         issueId: 401,
         issueTitle: "Re-dispatch",
@@ -1029,7 +1027,6 @@ describe("E2E pipeline", () => {
         level: "medior",
         fromLabel: "To Improve",
         toLabel: "Doing",
-        transitionLabel: (id, from, to) => h.provider.transitionLabel(id, from, to),
         provider: h.provider,
       });
 
@@ -1045,7 +1042,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         targetRole: "reviewer",
         workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
         provider: h.provider,
@@ -1063,7 +1060,7 @@ describe("E2E pipeline", () => {
 
       const result = await projectTick({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
         agentId: "test-agent",
         targetRole: "reviewer",
         workflow: { ...DEFAULT_WORKFLOW, reviewPolicy: ReviewPolicy.AUTO },
@@ -1091,7 +1088,8 @@ describe("E2E pipeline", () => {
 
       await executeCompletion({
         workspaceDir: h.workspaceDir,
-        groupId: h.groupId,
+        projectSlug: h.project.slug,
+        channels: h.project.channels,
         role: "tester",
         result: "pass",
         issueId: 90,

@@ -47,7 +47,7 @@ The architect will:
 
 Example:
   research_task({
-    projectGroupId: "-5176490302",
+    projectSlug: "my-webapp",
     title: "Research: Session persistence strategy",
     description: "Sessions are lost on restart. Current impl uses in-memory Map in session-store.ts. Constraints: must work with SQLite (already a dep), max 50ms latency on read. Prior discussion in #42 ruled out Redis.",
     focusAreas: ["SQLite vs file-based", "migration path", "cache invalidation"],
@@ -55,11 +55,11 @@ Example:
   })`,
     parameters: {
       type: "object",
-      required: ["projectGroupId", "title", "description"],
+      required: ["projectSlug", "title", "description"],
       properties: {
-        projectGroupId: {
+        projectSlug: {
           type: "string",
-          description: "Project group ID",
+          description: "Project slug (e.g. 'my-webapp').",
         },
         title: {
           type: "string",
@@ -87,7 +87,7 @@ Example:
     },
 
     async execute(_id: string, params: Record<string, unknown>) {
-      const groupId = params.projectGroupId as string;
+      const slug = (params.projectSlug ?? params.projectGroupId) as string;
       const title = params.title as string;
       const description = (params.description as string) ?? "";
       const focusAreas = (params.focusAreas as string[]) ?? [];
@@ -95,11 +95,11 @@ Example:
       const dryRun = (params.dryRun as boolean) ?? false;
       const workspaceDir = requireWorkspaceDir(ctx);
 
-      if (!groupId) throw new Error("projectGroupId is required");
+      if (!slug) throw new Error("projectSlug is required");
       if (!title) throw new Error("title is required");
       if (!description) throw new Error("description is required — provide detailed background context for the architect");
 
-      const { project } = await resolveProject(workspaceDir, groupId);
+      const { project } = await resolveProject(workspaceDir, slug);
       const { provider } = await resolveProvider(project);
       const pluginConfig = getPluginConfig(api);
       const role = "architect";
@@ -112,7 +112,7 @@ Example:
       const issueBody = bodyParts.join("\n");
 
       await auditLog(workspaceDir, "research_task", {
-        project: project.name, groupId, title, complexity, focusAreas, dryRun,
+        project: project.name, title, complexity, focusAreas, dryRun,
       });
 
       // Select level: use complexity hint to guide the heuristic
@@ -136,13 +136,16 @@ Example:
       // Create issue in "To Research" (the architect queue state)
       const issue = await provider.createIssue(title, issueBody, TO_RESEARCH_LABEL as StateLabel);
 
-      // Apply notify:{groupId} label for multi-group isolation (best-effort)
-      const notifyLabel = getNotifyLabel(groupId);
-      const hasNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
-      if (!hasNotify) {
-        provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
-          .then(() => provider.addLabel(issue.iid, notifyLabel))
-          .catch(() => {});
+      // Apply notify:{groupId} label for notification routing (best-effort)
+      const primaryGroupId = project.channels[0]?.groupId;
+      const notifyLabel = primaryGroupId ? getNotifyLabel(primaryGroupId) : null;
+      if (notifyLabel) {
+        const hasNotify = issue.labels.some((l) => l.startsWith(NOTIFY_LABEL_PREFIX));
+        if (!hasNotify) {
+          provider.ensureLabel(notifyLabel, NOTIFY_LABEL_COLOR)
+            .then(() => provider.addLabel(issue.iid, notifyLabel))
+            .catch(() => {});
+        }
       }
 
       // Check worker availability
@@ -167,7 +170,6 @@ Example:
       const dr = await dispatchTask({
         workspaceDir,
         agentId: ctx.agentId,
-        groupId,
         project,
         issueId: issue.iid,
         issueTitle: issue.title,
@@ -177,10 +179,8 @@ Example:
         level,
         fromLabel: TO_RESEARCH_LABEL,
         toLabel,
-        transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
         provider,
         pluginConfig,
-        channel: project.channels.find(ch => ch.groupId === groupId)?.channel ?? project.channels[0]?.channel,
         sessionKey: ctx.sessionKey,
         runtime: api.runtime,
       });
