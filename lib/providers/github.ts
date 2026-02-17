@@ -263,8 +263,7 @@ export class GitHubProvider implements IssueProvider {
           state = PrState.CHANGES_REQUESTED;
         } else {
           // Fall through to conversation comment detection
-          const prAuthor = await this.getPrAuthor(pr.number);
-          const hasComments = await this.hasConversationComments(pr.number, prAuthor);
+          const hasComments = await this.hasConversationComments(pr.number);
           state = hasComments ? PrState.HAS_COMMENTS : PrState.OPEN;
         }
       }
@@ -308,32 +307,33 @@ export class GitHubProvider implements IssueProvider {
   }
 
   /**
-   * Check if a PR has top-level conversation comments from non-author users.
+   * Check if a PR has any top-level conversation comments from human users.
+   * Excludes only bot accounts ([bot] suffix) and empty bodies.
    * Uses the Issues Comments API (PRs are also issues in GitHub).
    */
-  private async hasConversationComments(prNumber: number, prAuthor: string): Promise<boolean> {
+  private async hasConversationComments(prNumber: number): Promise<boolean> {
     try {
       const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prNumber}/comments`]);
       const comments = JSON.parse(raw) as Array<{ user: { login: string }; body: string }>;
       return comments.some(
-        (c) => c.user.login !== prAuthor && !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
+        (c) => !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
       );
     } catch { return false; }
   }
 
   /**
-   * Fetch top-level conversation comments on a PR from non-author users.
+   * Fetch top-level conversation comments on a PR from human users.
    * These are comments on the PR timeline (not inline review comments).
+   * Excludes only bot accounts and empty bodies.
    */
   private async fetchConversationComments(
     prNumber: number,
-    prAuthor: string,
   ): Promise<Array<{ id: number; user: { login: string }; body: string; created_at: string }>> {
     try {
       const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prNumber}/comments`]);
       const all = JSON.parse(raw) as Array<{ id: number; user: { login: string }; body: string; created_at: string }>;
       return all.filter(
-        (c) => c.user.login !== prAuthor && !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
+        (c) => !c.user.login.endsWith("[bot]") && c.body.trim().length > 0,
       );
     } catch { return []; }
   }
@@ -403,7 +403,7 @@ export class GitHubProvider implements IssueProvider {
     } catch { /* best-effort */ }
 
     // Top-level conversation comments (regular PR comments via Issues API)
-    const conversationComments = await this.fetchConversationComments(prNumber, prAuthor);
+    const conversationComments = await this.fetchConversationComments(prNumber);
     for (const c of conversationComments) {
       comments.push({
         id: c.id,
