@@ -274,7 +274,7 @@ export async function dispatchTask(
   // Step 5: Update worker state
   try {
     await recordWorkerState(workspaceDir, groupId, role, {
-      issueId, level, sessionKey, sessionAction,
+      issueId, level, sessionKey, sessionAction, fromLabel,
     });
   } catch (err) {
     // Session is already dispatched — log warning but don't fail
@@ -346,13 +346,14 @@ function sendToAgent(
 
 async function recordWorkerState(
   workspaceDir: string, groupId: string, role: string,
-  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send" },
+  opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string },
 ): Promise<void> {
   await activateWorker(workspaceDir, groupId, role, {
     issueId: String(opts.issueId),
     level: opts.level,
     sessionKey: opts.sessionKey,
     startTime: new Date().toISOString(),
+    previousLabel: opts.fromLabel,
   });
 }
 
