@@ -29,12 +29,14 @@ export async function reviewPass(opts: {
   provider: IssueProvider;
   repoPath: string;
   gitPullTimeoutMs?: number;
+  /** Base branch used for git history fallback check (e.g. "main"). */
+  baseBranch?: string;
   /** Called after a successful PR merge (for notifications). */
   onMerge?: (issueId: number, prUrl: string | null, prTitle?: string, sourceBranch?: string) => void;
   /** Called when changes are requested or conflicts detected (for notifications). */
   onFeedback?: (issueId: number, reason: "changes_requested" | "merge_conflict", prUrl: string | null, issueTitle: string, issueUrl: string) => void;
 }): Promise<number> {
-  const { workspaceDir, projectName, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, onMerge, onFeedback } = opts;
+  const { workspaceDir, projectName, workflow, provider, repoPath, gitPullTimeoutMs = 30_000, baseBranch, onMerge, onFeedback } = opts;
   let transitions = 0;
 
   // Find all states with a review check (e.g. toReview with check: prApproved)
@@ -54,6 +56,22 @@ export async function reviewPass(opts: {
       if (routing !== "human") continue;
 
       const status = await provider.getPrStatus(issue.iid);
+
+      // Fallback: no PR found, but work may have been committed directly to base branch.
+      // Check git history for commits mentioning this issue number.
+      if (!status.url && status.state === PrState.CLOSED && baseBranch) {
+        try {
+          const isOnBranch = await provider.isCommitOnBaseBranch(issue.iid, baseBranch);
+          if (isOnBranch) {
+            status.state = PrState.MERGED;
+            await auditLog(workspaceDir, "review_git_fallback", {
+              project: projectName, issueId: issue.iid,
+              reason: "commit_on_base_branch",
+              baseBranch,
+            });
+          }
+        } catch { /* best-effort — don't block on git failure */ }
+      }
 
       // PR_APPROVED: Accept both explicit approval and manual merge (merge = implicit approval).
       // PR_MERGED: Only triggers on merge. This prevents self-merged PRs (no reviews) from

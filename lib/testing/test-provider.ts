@@ -263,6 +263,10 @@ export class TestProvider implements IssueProvider {
     // no-op in test provider
   }
 
+  async isCommitOnBaseBranch(_issueId: number, _baseBranch: string): Promise<boolean> {
+    return false; // no-op in test provider
+  }
+
   async addComment(issueId: number, body: string): Promise<void> {
     this.calls.push({ method: "addComment", args: { issueId, body } });
     const existing = this.comments.get(issueId) ?? [];

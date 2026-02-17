@@ -88,6 +88,14 @@ export interface IssueProvider {
   /** Get review comments on the PR linked to an issue. */
   getPrReviewComments(issueId: number): Promise<PrReviewComment[]>;
   /**
+   * Check if work for an issue is already present on the base branch via git history.
+   * Used as a fallback when no PR exists (e.g., work committed directly to main).
+   * Searches recent git log on the base branch for commits mentioning issue #N or !N.
+   * @param issueId  Issue number to search for
+   * @param baseBranch  Branch to search (e.g. "main")
+   */
+  isCommitOnBaseBranch(issueId: number, baseBranch: string): Promise<boolean>;
+  /**
    * Add an emoji reaction to a PR/MR comment by its comment ID.
    * Best-effort — implementations should not throw.
    * @param issueId  Issue ID (used to locate the associated PR/MR)
