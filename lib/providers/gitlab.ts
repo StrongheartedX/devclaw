@@ -264,6 +264,27 @@ export class GitLabProvider implements IssueProvider {
     await this.glab(["issue", "note", String(issueId), "--message", body]);
   }
 
+  /**
+   * Add an emoji award (reaction) to an MR note/comment.
+   * Uses the GitLab Award Emoji API on MR notes.
+   * Best-effort — swallows all errors.
+   * @param issueId  Used to locate the associated open MR via getRelatedMRs
+   * @param commentId  The note ID on the MR
+   * @param emoji  Emoji name without colons (e.g. "robot", "thumbsup")
+   */
+  async reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void> {
+    try {
+      const mrs = await this.getRelatedMRs(issueId);
+      const open = mrs.find((mr) => mr.state === "opened");
+      if (!open) return;
+      await this.glab([
+        "api", `projects/:id/merge_requests/${open.iid}/notes/${commentId}/award_emoji`,
+        "--method", "POST",
+        "--field", `name=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
     const args = ["issue", "update", String(issueId)];
     if (updates.title !== undefined) args.push("--title", updates.title);

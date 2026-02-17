@@ -365,6 +365,21 @@ export class GitHubProvider implements IssueProvider {
     await this.gh(["issue", "comment", String(issueId), "--body", body]);
   }
 
+  /**
+   * Add an emoji reaction to a PR/MR issue comment.
+   * Uses the GitHub Issues Comments Reactions API (PRs share the issue comment namespace).
+   * Best-effort — swallows all errors.
+   */
+  async reactToPrComment(_issueId: number, commentId: number, emoji: string): Promise<void> {
+    try {
+      await this.gh([
+        "api", `repos/:owner/:repo/issues/comments/${commentId}/reactions`,
+        "--method", "POST",
+        "--field", `content=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
   async editIssue(issueId: number, updates: { title?: string; body?: string }): Promise<Issue> {
     const args = ["issue", "edit", String(issueId)];
     if (updates.title !== undefined) args.push("--title", updates.title);
