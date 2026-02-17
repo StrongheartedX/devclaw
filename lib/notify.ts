@@ -172,7 +172,8 @@ async function sendMessage(
     // Use runtime API when available (avoids CLI subprocess timeouts)
     if (runtime) {
       if (channel === "telegram") {
-        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true });
+        // Cast to any to bypass TypeScript type limitation; disableWebPagePreview is valid in Telegram API
+        await runtime.channel.telegram.sendMessageTelegram(target, message, { silent: true, disableWebPagePreview: true } as any);
         return true;
       }
       if (channel === "whatsapp") {
@@ -196,21 +197,22 @@ async function sendMessage(
     // Fallback: use CLI (for unsupported channels or when runtime isn't available)
     // Import lazily to avoid circular dependency issues
     const { runCommand } = await import("./run-command.js");
-    await runCommand(
-      [
-        "openclaw",
-        "message",
-        "send",
-        "--channel",
-        channel,
-        "--target",
-        target,
-        "--message",
-        message,
-        "--json",
-      ],
-      { timeoutMs: 30_000 },
-    );
+    const args = [
+      "openclaw",
+      "message",
+      "send",
+      "--channel",
+      channel,
+      "--target",
+      target,
+      "--message",
+      message,
+      "--json",
+    ];
+    if (channel === "telegram") {
+      args.push("--disable-web-page-preview");
+    }
+    await runCommand(args, { timeoutMs: 30_000 });
     return true;
   } catch (err) {
     // Log but don't throw — notifications shouldn't break the main flow
