@@ -68,7 +68,7 @@ export function createWorkFinishTool(api: OpenClawPluginApi) {
       const completion = await executeCompletion({
         workspaceDir, groupId, role, result, issueId, summary, prUrl, provider, repoPath,
         projectName: project.name,
-        channel: project.channel,
+        channel: project.channels.find(ch => ch.groupId === groupId)?.channel ?? project.channels[0]?.channel,
         pluginConfig,
         runtime: api.runtime,
         workflow,

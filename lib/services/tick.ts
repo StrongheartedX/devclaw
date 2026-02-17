@@ -9,7 +9,7 @@ import type { Issue, StateLabel } from "../providers/provider.js";
 import type { IssueProvider } from "../providers/provider.js";
 import { createProvider } from "../providers/index.js";
 import { selectLevel } from "../model-selector.js";
-import { getWorker, getSessionForLevel, readProjects } from "../projects.js";
+import { getWorker, getProject, getSessionForLevel, readProjects } from "../projects.js";
 import { dispatchTask } from "../dispatch.js";
 import { getLevelsForRole } from "../roles/index.js";
 import { loadConfig } from "../config/index.js";
@@ -71,7 +71,7 @@ export async function projectTick(opts: {
     maxPickups, targetRole, runtime,
   } = opts;
 
-  const project = (await readProjects(workspaceDir)).projects[groupId];
+  const project = getProject(await readProjects(workspaceDir), groupId);
   if (!project) return { pickups: [], skipped: [{ reason: `Project not found: ${groupId}` }] };
 
   const resolvedConfig = await loadConfig(workspaceDir, project.name);
@@ -95,7 +95,7 @@ export async function projectTick(opts: {
     }
 
     // Re-read fresh state (previous dispatch may have changed it)
-    const fresh = (await readProjects(workspaceDir)).projects[groupId];
+    const fresh = getProject(await readProjects(workspaceDir), groupId);
     if (!fresh) break;
 
     const worker = getWorker(fresh, role);
@@ -160,7 +160,7 @@ export async function projectTick(opts: {
           transitionLabel: (id, from, to) => provider.transitionLabel(id, from as StateLabel, to as StateLabel),
           provider: provider as IssueProvider,
           pluginConfig,
-          channel: fresh.channel,
+          channel: fresh.channels.find(ch => ch.groupId === groupId)?.channel ?? fresh.channels[0]?.channel,
           sessionKey,
           runtime,
         });

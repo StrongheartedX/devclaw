@@ -206,19 +206,21 @@ export async function createTestHarness(opts?: HarnessOptions): Promise<TestHarn
   }
 
   const project: Project = {
+    slug: projectName,
     name: projectName,
     repo,
     groupName: "Test Group",
     deployUrl: "",
     baseBranch,
     deployBranch: baseBranch,
+    channels: [{ groupId, channel: "telegram", name: "primary", events: ["*"] }],
     provider: "github",
     workers: defaultWorkers,
   };
 
   const projectsData: ProjectsData = {
     projects: {
-      [groupId]: project,
+      [projectName]: project,  // New schema: keyed by slug (projectName), not groupId
       ...extraProjects,
     },
   };
