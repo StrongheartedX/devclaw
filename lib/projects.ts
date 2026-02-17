@@ -83,6 +83,8 @@ export type WorkerState = {
   startTime: string | null;
   level: string | null;
   sessions: Record<string, string | null>;
+  /** Label the issue had before being transitioned to the active (Doing/Testing) state. Used by health check to revert to the correct queue label. */
+  previousLabel?: string | null;
 };
 
 /**
@@ -288,6 +290,7 @@ export async function updateWorker(
 /**
  * Mark a worker as active with a new task.
  * Stores session key in sessions[level] when a new session is spawned.
+ * Stores previousLabel so health check can revert to the correct queue state.
  * Accepts slug or groupId (dual-mode).
  */
 export async function activateWorker(
@@ -299,6 +302,8 @@ export async function activateWorker(
     level: string;
     sessionKey?: string;
     startTime?: string;
+    /** Label the issue had before transitioning to the active state (e.g. "To Do", "To Improve"). */
+    previousLabel?: string;
   },
 ): Promise<ProjectsData> {
   const updates: Partial<WorkerState> = {
@@ -311,6 +316,9 @@ export async function activateWorker(
   }
   if (params.startTime !== undefined) {
     updates.startTime = params.startTime;
+  }
+  if (params.previousLabel !== undefined) {
+    updates.previousLabel = params.previousLabel;
   }
   return updateWorker(workspaceDir, slugOrGroupId, role, updates);
 }

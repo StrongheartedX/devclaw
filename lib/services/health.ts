@@ -15,7 +15,14 @@
  *   | inactive      | Active label      | any          | Revert issue to queue (label stuck)       |
  *   | inactive      | issueId set       | any          | Clear issueId (warning)                   |
  *   | active        | issue deleted     | any          | Deactivate worker, clear state            |
+ *
+ * Session liveness notes:
+ *   - gateway status `sessions.recent` is capped at 10 entries. We avoid this cap by
+ *     reading session keys directly from the session files listed in `sessions.paths`.
+ *   - Grace period: workers activated within the last GRACE_PERIOD_MS are never
+ *     considered session-dead (they may not appear in sessions yet).
  */
+import fs from "node:fs/promises";
 import type { StateLabel, IssueProvider, Issue } from "../providers/provider.js";
 import {
   getSessionForLevel,
@@ -79,8 +86,17 @@ export type SessionLookup = Map<string, GatewaySession>;
 // Gateway session lookup
 // ---------------------------------------------------------------------------
 
+/** Grace period: skip session-dead checks for workers started within this window. */
+export const GRACE_PERIOD_MS = 5 * 60 * 1_000; // 5 minutes
+
 /**
  * Query gateway status and build a lookup map of active sessions.
+ *
+ * Instead of relying on `sessions.recent` (capped at 10 entries), this function:
+ *   1. Gets the session file paths from `sessions.paths` in the status response
+ *   2. Reads each sessions JSON file directly to get ALL session keys without cap
+ *
+ * Falls back to `sessions.recent` if file reads fail (e.g., permission issues).
  * Returns null if gateway is unavailable (timeout, error, etc).
  * Callers should skip session liveness checks if null — unknown ≠ dead.
  */
@@ -95,13 +111,42 @@ export async function fetchGatewaySessions(gatewayTimeoutMs = 15_000): Promise<S
 
     const jsonStart = result.stdout.indexOf("{");
     const data = JSON.parse(jsonStart >= 0 ? result.stdout.slice(jsonStart) : result.stdout);
-    const sessions: GatewaySession[] = data?.sessions?.recent ?? [];
 
-    for (const session of sessions) {
-      if (session.key) {
-        lookup.set(session.key, session);
+    // Primary strategy: read session files directly to avoid the `recent` cap.
+    // `sessions.paths` lists all session store files managed by the gateway.
+    const sessionPaths: string[] = data?.sessions?.paths ?? [];
+    let readFromFiles = false;
+
+    for (const filePath of sessionPaths) {
+      try {
+        const raw = await fs.readFile(filePath, "utf-8");
+        const fileData = JSON.parse(raw) as Record<string, { updatedAt?: number; percentUsed?: number; abortedLastRun?: boolean }>;
+        for (const [key, entry] of Object.entries(fileData)) {
+          if (key && !lookup.has(key)) {
+            lookup.set(key, {
+              key,
+              updatedAt: entry.updatedAt ?? 0,
+              percentUsed: entry.percentUsed ?? 0,
+              abortedLastRun: entry.abortedLastRun,
+            });
+          }
+        }
+        readFromFiles = true;
+      } catch {
+        // File unreadable — skip and fall back to recent
       }
     }
+
+    // Fallback: if file reads all failed, use `sessions.recent` (may be capped)
+    if (!readFromFiles) {
+      const recentSessions: GatewaySession[] = data?.sessions?.recent ?? [];
+      for (const session of recentSessions) {
+        if (session.key) {
+          lookup.set(session.key, session);
+        }
+      }
+    }
+
     return lookup;
   } catch {
     // Gateway unavailable — return null (don't assume sessions are dead)
@@ -171,7 +216,15 @@ export async function checkWorkerHealth(opts: {
 
   // Get labels from workflow config
   const expectedLabel = getActiveLabel(workflow, role);
-  const queueLabel = getRevertLabel(workflow, role);
+  // Use the label stored at dispatch time (previousLabel) if available.
+  // This ensures we revert to "To Improve" instead of always "To Do" when
+  // a worker was dispatched from a non-standard queue state.
+  const queueLabel: string = worker.previousLabel ?? getRevertLabel(workflow, role);
+
+  // Grace period: skip session liveness checks for recently-started workers.
+  // A freshly dispatched worker may not appear in gateway sessions yet.
+  const workerStartTime = worker.startTime ? new Date(worker.startTime).getTime() : null;
+  const withinGracePeriod = workerStartTime !== null && (Date.now() - workerStartTime) < GRACE_PERIOD_MS;
 
   // Parse issueId (may be comma-separated for batch, take first)
   const issueIdNum = worker.issueId ? Number(worker.issueId.split(",")[0]) : null;
@@ -264,9 +317,11 @@ export async function checkWorkerHealth(opts: {
 
   // ---------------------------------------------------------------------------
   // Case 1: Active with correct label but session is dead/missing
-  // Skip if sessions lookup unavailable (gateway timeout) — unknown ≠ dead
+  // Skip if:
+  //   - sessions lookup unavailable (gateway timeout) — unknown ≠ dead
+  //   - worker started within grace period (may not appear in gateway yet)
   // ---------------------------------------------------------------------------
-  if (worker.active && sessionKey && sessions && !isSessionAlive(sessionKey, sessions)) {
+  if (worker.active && sessionKey && sessions && !withinGracePeriod && !isSessionAlive(sessionKey, sessions)) {
     const fix: HealthFix = {
       issue: {
         type: "session_dead",
