@@ -10,6 +10,7 @@ import {
   HEARTBEAT_MD_TEMPLATE,
   IDENTITY_MD_TEMPLATE,
   SOUL_MD_TEMPLATE,
+  TOOLS_MD_TEMPLATE,
   WORKFLOW_YAML_TEMPLATE,
   DEFAULT_ROLE_INSTRUCTIONS,
 } from "../templates.js";
@@ -76,12 +77,13 @@ export async function scaffoldWorkspace(workspacePath: string, defaultWorkspaceP
   await backupAndWrite(path.join(workspacePath, "HEARTBEAT.md"), HEARTBEAT_MD_TEMPLATE);
   written.push("HEARTBEAT.md");
 
-  // IDENTITY.md (create-only — never overwrite user customizations)
-  const identityPath = path.join(workspacePath, "IDENTITY.md");
-  if (!await fileExists(identityPath)) {
-    await fs.writeFile(identityPath, IDENTITY_MD_TEMPLATE, "utf-8");
-    written.push("IDENTITY.md");
-  }
+  // IDENTITY.md (backup existing — stays at workspace root)
+  await backupAndWrite(path.join(workspacePath, "IDENTITY.md"), IDENTITY_MD_TEMPLATE);
+  written.push("IDENTITY.md");
+
+  // TOOLS.md (backup existing — stays at workspace root)
+  await backupAndWrite(path.join(workspacePath, "TOOLS.md"), TOOLS_MD_TEMPLATE);
+  written.push("TOOLS.md");
 
   // SOUL.md (create-only — never overwrite user customizations)
   const soulPath = path.join(workspacePath, "SOUL.md");

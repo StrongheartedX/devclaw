@@ -18,30 +18,66 @@ import { log as auditLog } from "../audit.js";
 import { getAllRoleIds, getLevelsForRole } from "../roles/index.js";
 import { ExecutionMode, getRoleLabels } from "../workflow.js";
 import { loadConfig } from "../config/index.js";
-import { DEFAULT_ROLE_INSTRUCTIONS } from "../templates.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
 
 /**
- * Scaffold project-specific prompt files for all registered roles.
+ * Scaffold project directory with prompts/ folder and a README explaining overrides.
  * Returns true if files were created, false if they already existed.
  */
 async function scaffoldPromptFiles(workspaceDir: string, projectName: string): Promise<boolean> {
-  const promptsDir = path.join(workspaceDir, DATA_DIR, "projects", projectName, "prompts");
+  const projectDir = path.join(workspaceDir, DATA_DIR, "projects", projectName);
+  const promptsDir = path.join(projectDir, "prompts");
   await fs.mkdir(promptsDir, { recursive: true });
 
-  let created = false;
-  for (const role of getAllRoleIds()) {
-    const filePath = path.join(promptsDir, `${role}.md`);
-    try {
-      await fs.access(filePath);
-    } catch {
-      const content = DEFAULT_ROLE_INSTRUCTIONS[role] ?? `# ${role.toUpperCase()} Worker Instructions\n\nAdd role-specific instructions here.\n`;
-      await fs.writeFile(filePath, content, "utf-8");
-      created = true;
-    }
-  }
+  const readmePath = path.join(projectDir, "README.md");
+  try {
+    await fs.access(readmePath);
+    return false;
+  } catch {
+    const roles = getAllRoleIds().join(", ");
+    await fs.writeFile(readmePath, `# Project Overrides
 
-  return created;
+This directory holds project-specific configuration that overrides the workspace defaults.
+
+## Prompt Overrides
+
+To override default worker instructions, create \`prompts/<role>.md\`:
+
+Available roles: ${roles}
+
+Example: \`prompts/developer.md\` overrides the default developer instructions for this project only.
+Files here take priority over the workspace defaults in \`devclaw/prompts/\`.
+
+## Workflow Overrides
+
+To override the default workflow configuration, create \`workflow.yaml\` in this directory.
+
+Only include the keys you want to override — everything else inherits from the workspace-level \`devclaw/workflow.yaml\`. The three-layer system is:
+
+1. **Built-in defaults** (code)
+2. **Workspace** — \`devclaw/workflow.yaml\`
+3. **Project** — \`devclaw/projects/${projectName}/workflow.yaml\` (this directory)
+
+Example — use a different review policy for this project:
+
+\`\`\`yaml
+workflow:
+  reviewPolicy: agent
+\`\`\`
+
+Example — override model for senior developer:
+
+\`\`\`yaml
+roles:
+  developer:
+    models:
+      senior: claude-sonnet-4-5-20250514
+\`\`\`
+
+Call \`workflow_guide\` for the full config reference.
+`, "utf-8");
+    return true;
+  }
 }
 
 export function createProjectRegisterTool() {
