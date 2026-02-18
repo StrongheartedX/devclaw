@@ -175,7 +175,7 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 - Include issue number: \`feat: add user authentication (#12)\`
 - Branch naming: \`feature/<id>-<slug>\` or \`fix/<id>-<slug>\`
 - **DEVELOPER always works in a git worktree** (never switch branches in the main repo)
-- **DEVELOPER must merge to base branch** before announcing completion
+- **DEVELOPER must NOT merge the PR** — leave it open for review. The system auto-merges when approved
 - **Do NOT use closing keywords in PR/MR descriptions** (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X". DevClaw manages issue state — auto-closing bypasses the review lifecycle.
 - If the test phase is enabled: **TESTER tests on the deployed version** and inspects code on the base branch
 - If the test phase is enabled: **TESTER always calls task_comment** with review findings before completing
