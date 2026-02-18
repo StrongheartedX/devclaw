@@ -16,7 +16,13 @@ import path from "node:path";
 import { readProjects, getProject } from "../projects.js";
 import { log as auditLog } from "../audit.js";
 import { DATA_DIR } from "../setup/migrate-layout.js";
-import { checkWorkerHealth, scanOrphanedLabels, scanOrphanedSessions, fetchGatewaySessions, type SessionLookup } from "./health.js";
+import {
+  checkWorkerHealth,
+  scanOrphanedLabels,
+  scanOrphanedSessions,
+  fetchGatewaySessions,
+  type SessionLookup,
+} from "./health.js";
 import { projectTick } from "./tick.js";
 import { reviewPass } from "./review.js";
 import { createProvider } from "../providers/index.js";
@@ -47,7 +53,11 @@ type TickResult = {
 };
 
 type ServiceContext = {
-  logger: { info(msg: string): void; warn(msg: string): void; error(msg: string): void };
+  logger: {
+    info(msg: string): void;
+    warn(msg: string): void;
+    error(msg: string): void;
+  };
   config: {
     agents?: { list?: Array<{ id: string; workspace?: string }> };
   };
@@ -66,7 +76,9 @@ export const HEARTBEAT_DEFAULTS: HeartbeatConfig = {
 export function resolveHeartbeatConfig(
   pluginConfig?: Record<string, unknown>,
 ): HeartbeatConfig {
-  const raw = pluginConfig?.work_heartbeat as Partial<HeartbeatConfig> | undefined;
+  const raw = pluginConfig?.work_heartbeat as
+    | Partial<HeartbeatConfig>
+    | undefined;
   return { ...HEARTBEAT_DEFAULTS, ...raw };
 }
 
@@ -81,36 +93,19 @@ export function registerHeartbeatService(api: OpenClawPluginApi) {
     id: "devclaw-heartbeat",
 
     start: async (ctx: ServiceContext) => {
-      const pluginConfig = api.pluginConfig as Record<string, unknown> | undefined;
-      const config = resolveHeartbeatConfig(pluginConfig);
+      const { intervalSeconds } = HEARTBEAT_DEFAULTS;
 
-      if (!config.enabled) {
-        ctx.logger.info("work_heartbeat service disabled");
-        return;
-      }
-
-      const agents = discoverAgents(api.config);
-      if (agents.length === 0) {
-        ctx.logger.warn("work_heartbeat service: no DevClaw agents registered");
-        return;
-      }
-
-      ctx.logger.info(
-        `work_heartbeat service started: every ${config.intervalSeconds}s, ${agents.length} agents, max ${config.maxPickupsPerTick} pickups/tick`,
-      );
-
+      // Config + agent discovery happen per-tick so the heartbeat automatically
+      // picks up projects onboarded after the gateway starts — no restart needed.
       intervalId = setInterval(
-        () => runHeartbeatTick(agents, config, pluginConfig, ctx.logger),
-        config.intervalSeconds * 1000,
+        () => runHeartbeatTick(api, ctx.logger),
+        intervalSeconds * 1000,
       );
 
       // Run an immediate tick shortly after startup so queued work is picked up
       // right away instead of waiting for the full interval (up to 60s).
       // The 2s delay lets the plugin and providers fully initialize first.
-      setTimeout(
-        () => runHeartbeatTick(agents, config, pluginConfig, ctx.logger),
-        2_000,
-      );
+      setTimeout(() => runHeartbeatTick(api, ctx.logger), 2_000);
     },
 
     stop: async (ctx) => {
@@ -149,7 +144,9 @@ function discoverAgents(config: {
         agents.push({ agentId: a.id, workspace: a.workspace });
         seen.add(a.workspace);
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   // Check default workspace (used when no explicit agents are registered)
@@ -159,7 +156,9 @@ function discoverAgents(config: {
       if (hasProjects(defaultWorkspace)) {
         agents.push({ agentId: "main", workspace: defaultWorkspace });
       }
-    } catch { /* skip */ }
+    } catch {
+      /* skip */
+    }
   }
 
   return agents;
@@ -176,14 +175,23 @@ function hasProjects(workspace: string): boolean {
 
 /**
  * Run one heartbeat tick for all agents.
+ * Re-reads config and re-discovers agents each tick so projects onboarded
+ * after the gateway starts are picked up automatically — no restart needed.
  */
 async function runHeartbeatTick(
-  agents: Agent[],
-  config: HeartbeatConfig,
-  pluginConfig: Record<string, unknown> | undefined,
+  api: OpenClawPluginApi,
   logger: ServiceContext["logger"],
 ): Promise<void> {
   try {
+    const pluginConfig = api.pluginConfig as
+      | Record<string, unknown>
+      | undefined;
+    const config = resolveHeartbeatConfig(pluginConfig);
+    if (!config.enabled) return;
+
+    const agents = discoverAgents(api.config);
+    if (agents.length === 0) return;
+
     const result = await processAllAgents(agents, config, pluginConfig, logger);
     logTickResult(result, logger);
   } catch (err) {
@@ -232,8 +240,15 @@ async function processAllAgents(
 /**
  * Log tick results if anything happened.
  */
-function logTickResult(result: TickResult, logger: ServiceContext["logger"]): void {
-  if (result.totalPickups > 0 || result.totalHealthFixes > 0 || result.totalReviewTransitions > 0) {
+function logTickResult(
+  result: TickResult,
+  logger: ServiceContext["logger"],
+): void {
+  if (
+    result.totalPickups > 0 ||
+    result.totalHealthFixes > 0 ||
+    result.totalReviewTransitions > 0
+  ) {
     logger.info(
       `work_heartbeat tick: ${result.totalPickups} pickups, ${result.totalHealthFixes} health fixes, ${result.totalReviewTransitions} review transitions, ${result.totalSkipped} skipped`,
     );
@@ -258,7 +273,12 @@ export async function tick(opts: {
   const slugs = Object.keys(data.projects);
 
   if (slugs.length === 0) {
-    return { totalPickups: 0, totalHealthFixes: 0, totalSkipped: 0, totalReviewTransitions: 0 };
+    return {
+      totalPickups: 0,
+      totalHealthFixes: 0,
+      totalSkipped: 0,
+      totalReviewTransitions: 0,
+    };
   }
 
   const result: TickResult = {
@@ -268,7 +288,8 @@ export async function tick(opts: {
     totalReviewTransitions: 0,
   };
 
-  const projectExecution = (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
+  const projectExecution =
+    (pluginConfig?.projectExecution as string) ?? ExecutionMode.PARALLEL;
   let activeProjects = 0;
 
   for (const slug of slugs) {
@@ -276,7 +297,10 @@ export async function tick(opts: {
       const project = data.projects[slug];
       if (!project) continue;
 
-      const { provider } = await createProvider({ repo: project.repo, provider: project.provider });
+      const { provider } = await createProvider({
+        repo: project.repo,
+        provider: project.provider,
+      });
       const resolvedConfig = await loadConfig(workspaceDir, project.name);
 
       // Health pass: auto-fix zombies and stale workers
@@ -300,26 +324,40 @@ export async function tick(opts: {
         gitPullTimeoutMs: resolvedConfig.timeouts.gitPullMs,
         baseBranch: project.baseBranch,
         onMerge: (issueId, prUrl, prTitle, sourceBranch) => {
-          provider.getIssue(issueId).then((issue) => {
-            const target = resolveNotifyChannel(issue.labels, project.channels);
-            notify(
-              {
-                type: "prMerged",
-                project: project.name,
-                issueId,
-                issueUrl: issue.web_url,
-                issueTitle: issue.title,
-                prUrl: prUrl ?? undefined,
-                prTitle,
-                sourceBranch,
-                mergedBy: "heartbeat",
-              },
-              { workspaceDir, config: notifyConfig, groupId: target?.groupId, channel: target?.channel ?? "telegram" },
-            ).catch(() => {});
-          }).catch(() => {});
+          provider
+            .getIssue(issueId)
+            .then((issue) => {
+              const target = resolveNotifyChannel(
+                issue.labels,
+                project.channels,
+              );
+              notify(
+                {
+                  type: "prMerged",
+                  project: project.name,
+                  issueId,
+                  issueUrl: issue.web_url,
+                  issueTitle: issue.title,
+                  prUrl: prUrl ?? undefined,
+                  prTitle,
+                  sourceBranch,
+                  mergedBy: "heartbeat",
+                },
+                {
+                  workspaceDir,
+                  config: notifyConfig,
+                  groupId: target?.groupId,
+                  channel: target?.channel ?? "telegram",
+                },
+              ).catch(() => {});
+            })
+            .catch(() => {});
         },
         onFeedback: (issueId, reason, prUrl, issueTitle, issueUrl) => {
-          const type = reason === "changes_requested" ? "changesRequested" as const : "mergeConflict" as const;
+          const type =
+            reason === "changes_requested"
+              ? ("changesRequested" as const)
+              : ("mergeConflict" as const);
           // No issue labels available in this callback — fall back to primary channel
           const target = project.channels[0];
           notify(
@@ -331,7 +369,12 @@ export async function tick(opts: {
               issueTitle,
               prUrl: prUrl ?? undefined,
             },
-            { workspaceDir, config: notifyConfig, groupId: target?.groupId, channel: target?.channel ?? "telegram" },
+            {
+              workspaceDir,
+              config: notifyConfig,
+              groupId: target?.groupId,
+              channel: target?.channel ?? "telegram",
+            },
           ).catch(() => {});
         },
       });
@@ -342,7 +385,11 @@ export async function tick(opts: {
 
       // Sequential project guard: don't start new projects if one is active
       const isProjectActive = await checkProjectActive(workspaceDir, slug);
-      if (projectExecution === ExecutionMode.SEQUENTIAL && !isProjectActive && activeProjects >= 1) {
+      if (
+        projectExecution === ExecutionMode.SEQUENTIAL &&
+        !isProjectActive &&
+        activeProjects >= 1
+      ) {
         result.totalSkipped++;
         continue;
       }
@@ -363,7 +410,9 @@ export async function tick(opts: {
       if (isProjectActive || tickResult.pickups.length > 0) activeProjects++;
     } catch (err) {
       // Per-project isolation: one failing project doesn't crash the entire tick
-      opts.logger.warn(`Heartbeat tick failed for project ${slug}: ${(err as Error).message}`);
+      opts.logger.warn(
+        `Heartbeat tick failed for project ${slug}: ${(err as Error).message}`,
+      );
       result.totalSkipped++;
     }
   }
@@ -432,9 +481,12 @@ async function performHealthPass(
 /**
  * Check if a project has any active worker.
  */
-async function checkProjectActive(workspaceDir: string, slug: string): Promise<boolean> {
+async function checkProjectActive(
+  workspaceDir: string,
+  slug: string,
+): Promise<boolean> {
   const data = await readProjects(workspaceDir);
   const project = getProject(data, slug);
   if (!project) return false;
-  return Object.values(project.workers).some(w => w.active);
+  return Object.values(project.workers).some((w) => w.active);
 }

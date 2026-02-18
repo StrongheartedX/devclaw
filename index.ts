@@ -5,7 +5,7 @@ import { createTaskCreateTool } from "./lib/tools/task-create.js";
 import { createTaskUpdateTool } from "./lib/tools/task-update.js";
 import { createTaskCommentTool } from "./lib/tools/task-comment.js";
 import { createTaskEditBodyTool } from "./lib/tools/task-edit-body.js";
-import { createStatusTool } from "./lib/tools/status.js";
+import { createTasksStatusTool } from "./lib/tools/tasks-status.js";
 import { createHealthTool } from "./lib/tools/health.js";
 import { createProjectRegisterTool } from "./lib/tools/project-register.js";
 import { createSetupTool } from "./lib/tools/setup.js";
@@ -85,7 +85,7 @@ const plugin = {
     api.registerTool(createResearchTaskTool(api), { names: ["research_task"] });
 
     // Operations
-    api.registerTool(createStatusTool(api), { names: ["status"] });
+    api.registerTool(createTasksStatusTool(api), { names: ["tasks_status"] });
     api.registerTool(createTaskListTool(api), { names: ["task_list"] });
     api.registerTool(createHealthTool(), { names: ["health"] });
     // Setup & config
