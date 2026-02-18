@@ -26,6 +26,7 @@ Read the comments carefully — they often contain clarifications, decisions, or
 - Create an MR/PR to the base branch
 - **IMPORTANT:** Do NOT use closing keywords in PR/MR descriptions (no "Closes #X", "Fixes #X", "Resolves #X"). Use "As described in issue #X" or "Addresses issue #X" instead. DevClaw manages issue state — auto-closing bypasses the review lifecycle.
 - **Do NOT merge the PR yourself** — leave it open for review. The system will auto-merge when approved.
+- If you're blocked and need human input, call work_finish with result "blocked"
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
@@ -41,6 +42,7 @@ export const DEFAULT_QA_INSTRUCTIONS = `# TESTER Worker Instructions
   - result "pass" if everything looks good
   - result "fail" with specific issues if problems found
   - result "refine" if you need human input to decide
+  - result "blocked" if you can't proceed and need human input
 - If you discover unrelated bugs, call task_create to file them
 - Do NOT call work_start, status, health, or project_register
 `;
@@ -186,12 +188,16 @@ Skip the orchestrator section. Follow your task message and role instructions (a
 When you are done, **call \`work_finish\` yourself** — do not just announce in text.
 
 - **DEVELOPER done:** \`work_finish({ role: "developer", result: "done", projectSlug: "<from task message>", summary: "<brief summary>" })\`
+- **DEVELOPER blocked:** \`work_finish({ role: "developer", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })\`
 - **TESTER pass:** \`work_finish({ role: "tester", result: "pass", projectSlug: "<from task message>", summary: "<brief summary>" })\`
 - **TESTER fail:** \`work_finish({ role: "tester", result: "fail", projectSlug: "<from task message>", summary: "<specific issues>" })\`
 - **TESTER refine:** \`work_finish({ role: "tester", result: "refine", projectSlug: "<from task message>", summary: "<what needs human input>" })\`
+- **TESTER blocked:** \`work_finish({ role: "tester", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })\`
 - **REVIEWER approve:** \`work_finish({ role: "reviewer", result: "approve", projectSlug: "<from task message>", summary: "<what you checked>" })\`
 - **REVIEWER reject:** \`work_finish({ role: "reviewer", result: "reject", projectSlug: "<from task message>", summary: "<specific issues>" })\`
+- **REVIEWER blocked:** \`work_finish({ role: "reviewer", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })\`
 - **Architect done:** \`work_finish({ role: "architect", result: "done", projectSlug: "<from task message>", summary: "<recommendation summary>" })\`
+- **Architect blocked:** \`work_finish({ role: "architect", result: "blocked", projectSlug: "<from task message>", summary: "<what you need>" })\`
 
 The \`projectSlug\` is included in your task message.
 
