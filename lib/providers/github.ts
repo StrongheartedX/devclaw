@@ -272,8 +272,7 @@ export class GitHubProvider implements IssueProvider {
           state = PrState.CHANGES_REQUESTED;
         } else {
           // Check for unacknowledged COMMENTED reviews (feedback without formal "Request changes")
-          const prAuthor = await this.getPrAuthor(pr.number);
-          const hasReviewFeedback = await this.hasUnacknowledgedReviews(pr.number, prAuthor);
+          const hasReviewFeedback = await this.hasUnacknowledgedReviews(pr.number);
           if (hasReviewFeedback) {
             state = PrState.HAS_COMMENTS;
           } else {
@@ -315,22 +314,25 @@ export class GitHubProvider implements IssueProvider {
   }
 
   /**
-   * Check if a PR has unacknowledged COMMENTED reviews from non-author, non-bot users.
+   * Check if a PR has unacknowledged COMMENTED reviews from non-bot users.
    * A review is "acknowledged" if it has an 👀 (eyes) reaction.
    * This catches the common case where reviewers submit feedback as "Comment"
    * rather than "Request changes".
+   *
+   * Note: We don't filter out self-reviews because DevClaw agents commit under
+   * the repo owner's account — the PR author and reviewer are the same person.
    */
-  private async hasUnacknowledgedReviews(prNumber: number, prAuthor: string): Promise<boolean> {
+  private async hasUnacknowledgedReviews(prNumber: number): Promise<boolean> {
     try {
       const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}/reviews`]);
       const reviews = JSON.parse(raw) as Array<{
         id: number; user: { login: string }; body: string; state: string;
       }>;
 
-      // Filter to COMMENTED reviews with non-empty body from non-author, non-bot users
+      // Filter to COMMENTED reviews with non-empty body from non-bot users
       const commentedReviews = reviews.filter(
         (r) => r.state === "COMMENTED" && r.body?.trim().length > 0 &&
-          r.user.login !== prAuthor && !r.user.login.endsWith("[bot]"),
+          !r.user.login.endsWith("[bot]"),
       );
 
       if (commentedReviews.length === 0) return false;
@@ -352,14 +354,6 @@ export class GitHubProvider implements IssueProvider {
 
       return false;
     } catch { return false; }
-  }
-
-  /** Fetch the login of the PR author. Returns empty string on error. */
-  private async getPrAuthor(prNumber: number): Promise<string> {
-    try {
-      const raw = await this.gh(["api", `repos/:owner/:repo/pulls/${prNumber}`, "--jq", ".user.login"]);
-      return raw.trim();
-    } catch { return ""; }
   }
 
   /**
