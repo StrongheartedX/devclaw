@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Safe two-phase label transitions** — Label changes on GitHub/GitLab use a two-phase commit (add new → remove old) to prevent half-states on API failures.
 - **PR review detection improvements** — More reliable detection of review approvals, change requests, and conversation comments across GitHub and GitLab providers.
 - **TOOLS.md template improvements** — Cleaner generated tool documentation for new workspaces.
-- **15 tools** (was 14) — added `reset_defaults`
+- **16 tools** (was 14) — added `reset_defaults`, `tasks_status`, `task_list` (replaced `status` and `work_heartbeat`)
 
 ## [1.3.6] - 2026-02-18
 
@@ -190,7 +190,7 @@ This is the first stable release of DevClaw, a plugin for [OpenClaw](https://ope
 
 Comprehensive documentation available in the `docs/` directory:
 - [Architecture](docs/ARCHITECTURE.md) — System design and data flow
-- [Tools Reference](docs/TOOLS.md) — All 14 tools with parameters
+- [Tools Reference](docs/TOOLS.md) — All 16 tools with parameters
 - [Configuration](docs/CONFIGURATION.md) — Roles, timeouts, `openclaw.json`, `projects.json`
 - [Workflow](docs/WORKFLOW.md) — State machine, review policies, test phase
 - [Onboarding Guide](docs/ONBOARDING.md) — Step-by-step setup
