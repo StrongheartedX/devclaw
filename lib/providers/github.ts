@@ -78,7 +78,7 @@ export class GitHubProvider implements IssueProvider {
   private async findPrsViaTimeline(
     issueId: number,
     state: "open" | "merged" | "all",
-  ): Promise<Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null }> | null> {
+  ): Promise<Array<{ number: number; title: string; body: string; headRefName: string; url: string; mergedAt: string | null; reviewDecision: string | null; state: string }> | null> {
     const repo = await this.getRepoInfo();
     if (!repo) return null;
 
