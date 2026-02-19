@@ -10,13 +10,13 @@ All roles use a unified junior/medior/senior level scheme (architect uses junior
 
 ### Workflow State Machine
 
-The issue lifecycle is now a configurable state machine defined in `workflow.yaml`. The default workflow uses **human review** with **no test phase** (10 states):
+The issue lifecycle is now a configurable state machine defined in `workflow.yaml`. The default workflow uses **human review** with **no test phase** (10 default states, 12 with test phase):
 
 ```
 Planning → To Do → Doing → To Review → [PR approved → auto-merge] → Done
                                       → PR comments/changes requested → To Improve → Doing
                                       → Refining → (human decision)
-research_task → To Research → Researching → Planning (architect posts findings)
+To Research → Researching → Planning (architect posts findings)
 ```
 
 States have types (`queue`, `active`, `hold`, `terminal`), transitions with actions (`gitPull`, `detectPr`, `mergePr`, `closeIssue`, `reopenIssue`), and review checks (`prMerged`, `prApproved`). The test phase (toTest, testing) can be enabled via `workflow.yaml` — see [Workflow](WORKFLOW.md#test-phase-optional).
@@ -39,13 +39,13 @@ All issue tracker calls (GitHub via `gh`, GitLab via `glab`) are wrapped with co
 
 Worker sessions receive role-specific instructions via the `agent:bootstrap` hook at session startup, not appended to the task message. The hook reads from `devclaw/projects/<project>/prompts/<role>.md`, falling back to `devclaw/prompts/<role>.md`. Supports source tracking with `loadRoleInstructions(dir, { withSource: true })`.
 
-### In Review State and PR Polling
+### PR Review and Auto-Merge
 
-DEVELOPER can submit a PR for human review (`result: "review"`), which transitions the issue to `In Review`. The heartbeat's review pass polls PR status via `getPrStatus()` on the provider. When the PR is approved, DevClaw auto-merges via `mergePr()` and transitions to `To Test` for TESTER pickup. If the merge fails (e.g. conflicts), the issue moves to `To Improve` where a developer is auto-dispatched to resolve conflicts.
+DEVELOPER completes work (`result: "done"`), which transitions the issue to `To Review`. The heartbeat's review pass polls PR status via `getPrStatus()` on the provider. When the PR is approved, DevClaw auto-merges via `mergePr()` and transitions to `Done` (or `To Test` if test phase enabled). If the PR receives changes-requested reviews or merge conflicts, the issue moves to `To Improve` where a developer is auto-dispatched to fix.
 
 ### Architect Role
 
-The architect role enables design investigations. `research_task` creates a Planning issue with rich context and dispatches an architect worker directly (no queue states). The architect posts findings as comments, then completes with `done` (stays in Planning for human review) or `blocked` (→ Refining).
+The architect role enables design investigations. `research_task` creates an issue and dispatches an architect worker through dedicated `To Research` → `Researching` states. The architect posts findings as comments, creates implementation tasks in Planning, then completes with `done` or `blocked` (→ Refining).
 
 ### Workspace Layout Migration
 

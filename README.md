@@ -74,7 +74,7 @@ GitHub/GitLab issues are the single source of truth — not an internal database
 
 - **[External task state](#your-issues-stay-in-your-tracker)** — labels, transitions, and status queries go through your issue tracker
 - **[Atomic operations](#what-atomic-means-here)** — label transition + state update + session dispatch + audit log in one call
-- **[Tool-based guardrails](#the-toolbox)** — 14 tools enforce the process; the agent provides intent, the plugin handles mechanics
+- **[Tool-based guardrails](#the-toolbox)** — 16 tools enforce the process; the agent provides intent, the plugin handles mechanics
 
 ### ~60-80% token savings
 
@@ -153,12 +153,18 @@ Every issue follows the same path, no exceptions. DevClaw enforces it:
 
 ```
 Planning → To Do → Doing → To Review → PR approved → Done (auto-merge + close)
+Planning → To Research → Researching → Planning (architect findings)
 ```
 
 ```mermaid
 stateDiagram-v2
     [*] --> Planning
     Planning --> ToDo: Ready for development
+    Planning --> ToResearch: Needs investigation
+
+    ToResearch --> Researching: Architect picks up
+    Researching --> Planning: Architect done (findings posted)
+    Researching --> Refining: Architect blocked
 
     ToDo --> Doing: DEV picks up
     Doing --> ToReview: DEV done (opens PR)
@@ -214,12 +220,13 @@ Not every task is code. Sometimes you need investigation before implementation �
 
 The `research_task` tool spawns an architect worker on a separate track:
 
-1. Creates a Planning issue with rich context
-2. Dispatches an architect (junior = Sonnet, senior = Opus)
+1. Creates an issue and transitions it to `To Research`
+2. Dispatches an architect (junior = Sonnet, senior = Opus) → `Researching`
 3. Architect researches and posts findings as issue comments
-4. Completes with `done` (stays in Planning for human review) or `blocked` (→ Refining)
+4. Creates implementation tasks in Planning
+5. Completes with `done` (research issue closed) or `blocked` (→ Refining)
 
-No queue states, no PR, no review cycle — just research → findings → human decision. The issue stays in Planning so you can read the findings and decide what to do next (create implementation tasks, refine the approach, etc.).
+No PR, no review cycle — just research → findings → implementation tasks. The architect creates actionable tasks in Planning for you to review and queue.
 
 ### Sessions accumulate context
 
@@ -428,6 +435,14 @@ The orchestrator saying "I'll just make this quick fix myself" is like a manager
 openclaw plugins install @laurentenhoor/devclaw
 ```
 
+### Upgrade
+
+```bash
+openclaw plugins install @laurentenhoor/devclaw
+```
+
+> **Migrating to v1.4.0?** Default templates and workspace files are now externalized to a `defaults/` directory. Your existing customizations are preserved — run `reset_defaults` through your agent if you want to pick up the latest built-in templates (creates `.bak` backups first).
+
 Or for local development:
 ```bash
 openclaw plugins install -l ./devclaw
@@ -470,25 +485,26 @@ You can also use the [CLI wizard or non-interactive setup](docs/ONBOARDING.md#st
 
 ## The toolbox
 
-DevClaw gives the orchestrator 14 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
+DevClaw gives the orchestrator 16 tools. These aren't just convenience wrappers — they're **guardrails**. Each tool encodes a complex multi-step operation into a single atomic call. The agent provides intent, the plugin handles mechanics. The agent physically cannot skip a label transition, forget to update state, or dispatch to the wrong session — those decisions are made by deterministic code, not LLM reasoning.
 
 | Tool | What it does |
 |---|---|
 | `work_start` | Pick up a task — resolves level, transitions label, dispatches session, logs audit |
 | `work_finish` | Complete a task — transitions label, updates state, closes/reopens issue |
 | `task_create` | Create a new issue (used by workers to file bugs they discover) |
-| `task_update` | Manually change an issue's state label |
+| `task_update` | Manually change an issue's state label or override assigned level |
 | `task_comment` | Add a comment to an issue (with role attribution) |
 | `task_edit_body` | Edit issue title/description (initial state only; audit-logged) |
-| `status` | Dashboard: queue counts + active workflow + who's working on what |
+| `task_list` | Browse and search issues by workflow state |
+| `tasks_status` | Full project dashboard: hold, active, and queued issues with details |
 | `health` | Detect zombie workers, stale sessions, state inconsistencies |
-| `work_heartbeat` | Manually trigger a health check + queue dispatch cycle |
 | `project_register` | One-time project setup: creates labels, scaffolds instructions, initializes state |
 | `setup` | Agent + workspace initialization |
 | `onboard` | Conversational setup guide |
 | `research_task` | Spawn an architect for design investigation — creates issue, dispatches worker |
 | `autoconfigure_models` | LLM-powered model selection based on available models |
 | `workflow_guide` | Configuration reference for workflow.yaml (call before editing) |
+| `reset_defaults` | Restore workspace files to built-in defaults (creates `.bak` backups) |
 
 Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 
@@ -500,12 +516,18 @@ Full parameters and usage in the [Tools Reference](docs/TOOLS.md).
 |---|---|
 | **[Architecture](docs/ARCHITECTURE.md)** | System design, session model, data flow, end-to-end diagrams |
 | **[Workflow](docs/WORKFLOW.md)** | State machine, review policies, optional test phase |
-| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 14 tools |
+| **[Tools Reference](docs/TOOLS.md)** | Complete reference for all 16 tools |
 | **[Configuration](docs/CONFIGURATION.md)** | `openclaw.json`, `projects.json`, roles, timeouts |
 | **[Onboarding Guide](docs/ONBOARDING.md)** | Full step-by-step setup |
 | **[Testing](docs/TESTING.md)** | Test suite, fixtures, CI/CD |
 | **[Management Theory](docs/MANAGEMENT.md)** | The delegation model behind the design |
 | **[Roadmap](docs/ROADMAP.md)** | What's coming next |
+
+---
+
+## Release Notes
+
+See the [Changelog](CHANGELOG.md) for a detailed history of changes, or browse [GitHub Releases](https://github.com/laurentenhoor/devclaw/releases) for per-version notes.
 
 ---
 

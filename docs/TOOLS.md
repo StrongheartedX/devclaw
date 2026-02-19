@@ -1,6 +1,6 @@
 # DevClaw — Tools Reference
 
-Complete reference for all 15 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
+Complete reference for all 16 tools registered by DevClaw. See [`index.ts`](../index.ts) for registration.
 
 ## Worker Lifecycle
 
@@ -17,8 +17,8 @@ Pick up a task from the issue queue. Handles level assignment, label transition,
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `issueId` | number | No | Issue ID. If omitted, picks next by priority. |
-| `role` | `"developer"` \| `"tester"` \| `"architect"` | No | Worker role. Auto-detected from issue label if omitted. |
-| `projectGroupId` | string | No | Project group ID. Auto-detected from group context. |
+| `role` | `"developer"` \| `"tester"` \| `"architect"` \| `"reviewer"` | No | Worker role. Auto-detected from issue label if omitted. |
+| `projectSlug` | string | No | Project slug (e.g. 'my-webapp'). Auto-detected from group context. |
 | `level` | string | No | Level (`junior`, `medior`, `senior`). Auto-detected if omitted. |
 
 **What it does atomically:**
@@ -62,9 +62,9 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `role` | `"developer"` \| `"tester"` \| `"architect"` | Yes | Worker role |
+| `role` | `"developer"` \| `"tester"` \| `"architect"` \| `"reviewer"` | Yes | Worker role |
 | `result` | string | Yes | Completion result (see table below) |
-| `projectGroupId` | string | Yes | Project group ID |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `summary` | string | No | Brief summary for the announcement |
 | `prUrl` | string | No | PR/MR URL (auto-detected if omitted) |
 
@@ -81,8 +81,8 @@ Complete a task with a result. Called by workers (DEVELOPER/TESTER/ARCHITECT sub
 | tester | `"fail"` | Testing → To Improve | Issue reopened (only when test phase enabled) |
 | tester | `"refine"` | Testing → Refining | Awaits human decision |
 | tester | `"blocked"` | Testing → Refining | Awaits human decision |
-| architect | `"done"` | stays in Planning | Design complete, ready for human review |
-| architect | `"blocked"` | Planning → Refining | Awaits human decision |
+| architect | `"done"` | Researching → Done | Research complete, implementation tasks created |
+| architect | `"blocked"` | Researching → Refining | Awaits human decision |
 
 **What it does atomically:**
 
@@ -110,7 +110,7 @@ Create a new issue in the project's issue tracker.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | Yes | Project group ID |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `title` | string | Yes | Issue title |
 | `description` | string | No | Full issue body (markdown) |
 | `label` | StateLabel | No | State label. Defaults to `"Planning"`. |
@@ -129,7 +129,7 @@ Create a new issue in the project's issue tracker.
 
 ### `task_update`
 
-Change an issue's state label manually without going through the full pickup/complete flow.
+Change an issue's state label and/or override the assigned worker level.
 
 **Source:** [`lib/tools/task-update.ts`](../lib/tools/task-update.ts)
 
@@ -137,18 +137,22 @@ Change an issue's state label manually without going through the full pickup/com
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | Yes | Project group ID |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `issueId` | number | Yes | Issue ID to update |
-| `state` | StateLabel | Yes | New state label |
+| `state` | StateLabel | No | New state label |
+| `level` | string | No | Override the role:level assignment (e.g. 'senior') |
 | `reason` | string | No | Audit log reason for the change |
 
-**Valid states:** `Planning`, `To Do`, `Doing`, `To Review`, `Reviewing`, `Done`, `To Improve`, `Refining` (and `To Test`, `Testing` if test phase enabled)
+At least one of `state` or `level` must be provided.
+
+**Valid states:** `Planning`, `To Do`, `Doing`, `To Review`, `Reviewing`, `Done`, `To Improve`, `Refining`, `To Research`, `Researching` (and `To Test`, `Testing` if test phase enabled)
 
 **Use cases:**
 
 - Manual state adjustments (e.g. `Planning → To Do` after approval)
+- Override assigned level (e.g. escalate to senior for human review)
 - Failed auto-transitions that need correction
-- Bulk state changes by orchestrator
+- Force human review via level change
 
 ---
 
@@ -162,10 +166,10 @@ Add a comment to an issue for feedback, notes, or discussion.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | Yes | Project group ID |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `issueId` | number | Yes | Issue ID to comment on |
 | `body` | string | Yes | Comment body (markdown) |
-| `authorRole` | `"developer"` \| `"tester"` \| `"orchestrator"` | No | Attribution role prefix |
+| `authorRole` | `"developer"` \| `"tester"` \| `"architect"` \| `"reviewer"` \| `"orchestrator"` | No | Attribution role prefix |
 
 **Use cases:**
 
@@ -270,7 +274,7 @@ Worker health scan with optional auto-fix.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | No | Filter to specific project. Omit for all. |
+| `projectSlug` | string | No | Project slug. Omit for all. |
 | `fix` | boolean | No | Apply fixes for detected issues. Default: `false` (read-only). |
 | `activeSessions` | string[] | No | Active session IDs for zombie detection. |
 
@@ -285,31 +289,22 @@ Worker health scan with optional auto-fix.
 
 ---
 
-### `work_heartbeat`
+### `reset_defaults`
 
-Manual trigger for heartbeat: health fix + review polling + queue dispatch. Same logic as the background heartbeat service, but invoked on demand.
+Restore workspace files to built-in defaults from the `defaults/` directory. Creates `.bak` backups of existing files before overwriting. Warns about project-level prompt overrides that still take precedence over workspace defaults.
 
-**Source:** [`lib/tools/work-heartbeat.ts`](../lib/tools/work-heartbeat.ts)
+**Source:** [`lib/tools/reset-defaults.ts`](../lib/tools/reset-defaults.ts)
 
 **Parameters:**
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | No | Target single project. Omit for all. |
-| `dryRun` | boolean | No | Report only, don't dispatch. Default: `false`. |
-| `maxPickups` | number | No | Max worker dispatches per tick. |
-| `activeSessions` | string[] | No | Active session IDs for zombie detection. |
+| `resetProjectPrompts` | boolean | No | Also backup and delete project-level prompt overrides. Default: `false` (warn only). |
 
-**Three-pass sweep:**
-
-1. **Health pass** — Runs `checkWorkerHealth` per project per role. Auto-fixes zombies, stale workers, orphaned state.
-2. **Review pass** — Polls PR status for issues in "To Review" state. Auto-merges and transitions to Done (or "To Test" if test phase enabled) when PR is approved. PR comments or changes-requested reviews transition to "To Improve".
-3. **Tick pass** — Calls `projectTick` per project. Fills free worker slots by priority (To Improve > To Review > To Do).
-
-**Execution guards:**
-
-- `projectExecution: "sequential"` — only one project active at a time
-- `roleExecution: "sequential"` — only one role active at a time per project
+**What it restores:**
+- Workspace docs: AGENTS.md, HEARTBEAT.md, IDENTITY.md, TOOLS.md
+- Workflow state definitions (preserves models/timeouts)
+- Role prompt defaults
 
 ---
 
@@ -341,7 +336,7 @@ One-time project setup. Creates state labels, scaffolds project directory with o
 1. Validates project not already registered
 2. Resolves repo path, auto-detects GitHub/GitLab from git remote
 3. Verifies provider health (CLI installed and authenticated)
-4. Creates all 11 state labels (idempotent — safe to run again)
+4. Creates all state labels (idempotent — safe to run again)
 5. Adds project entry to `projects.json` with empty worker state for all registered roles
 6. Scaffolds project directory with `prompts/` folder and `README.md` explaining prompt and workflow overrides
 7. Writes audit log
@@ -414,7 +409,7 @@ Reference guide for workflow configuration. Call before making any workflow chan
 
 ### `research_task`
 
-Spawn an architect for a design investigation. Creates a Planning issue with rich context and dispatches an architect worker. No queue states — tool-triggered only.
+Spawn an architect for a design investigation. Creates a `To Research` issue with rich context and dispatches an architect worker through `To Research` → `Researching` states.
 
 **Source:** [`lib/tools/research-task.ts`](../lib/tools/research-task.ts)
 
@@ -422,7 +417,7 @@ Spawn an architect for a design investigation. Creates a Planning issue with ric
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `projectGroupId` | string | Yes | Project group ID |
+| `projectSlug` | string | Yes | Project slug (e.g. 'my-webapp') |
 | `title` | string | Yes | Design task title |
 | `description` | string | Yes | Detailed background context for the architect |
 | `focusAreas` | string[] | No | Specific areas to investigate |
@@ -442,8 +437,8 @@ developer:blocked → Doing     → Refining     (awaits human decision)
 reviewer:approve  → Reviewing → Done         (merge PR, git pull, close issue)
 reviewer:reject   → Reviewing → To Improve   (sent back to developer)
 reviewer:blocked  → Reviewing → Refining     (awaits human decision)
-architect:done    → stays in Planning          (design complete, ready for human review)
-architect:blocked → Planning  → Refining      (awaits human decision)
+architect:done    → Researching → Done          (research complete, implementation tasks created)
+architect:blocked → Researching → Refining     (awaits human decision)
 ```
 
 **With test phase enabled:**
@@ -465,7 +460,7 @@ Merge conflict    → To Review → To Improve   (developer resolves)
 
 ## Issue Priority Order
 
-When the heartbeat or `work_heartbeat` fills free worker slots, issues are prioritized:
+When the heartbeat fills free worker slots, issues are prioritized:
 
 1. **To Improve** — Review failures get fixed first (highest priority)
 2. **To Review** — Completed developer work awaits review (priority 2)

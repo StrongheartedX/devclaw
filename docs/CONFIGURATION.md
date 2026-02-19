@@ -164,7 +164,7 @@ Token-free interval-based health checks + queue dispatch:
 
 **Source:** [`lib/services/heartbeat.ts`](../lib/services/heartbeat.ts)
 
-The heartbeat service runs as a plugin service tied to the gateway lifecycle. Every tick: health pass (auto-fix zombies, stale workers) → review pass (poll PR status for "In Review" issues) → tick pass (fill free slots by priority). Zero LLM tokens consumed.
+The heartbeat service runs as a plugin service tied to the gateway lifecycle. Every tick: health pass (auto-fix zombies, stale workers) → review pass (poll PR status for "To Review" issues) → tick pass (fill free slots by priority). Zero LLM tokens consumed.
 
 ### Notifications
 
@@ -230,15 +230,16 @@ Restrict DevClaw tools to your orchestrator agent:
             "task_update",
             "task_comment",
             "task_edit_body",
-            "status",
+            "tasks_status",
+            "task_list",
             "health",
-            "work_heartbeat",
             "project_register",
             "setup",
             "onboard",
             "autoconfigure_models",
             "research_task",
-            "workflow_guide"
+            "workflow_guide",
+            "reset_defaults"
           ]
         }
       }
@@ -396,11 +397,12 @@ Append-only NDJSON at `<workspace>/devclaw/log/audit.log`. Auto-truncated to 250
 | `work_start` | Task dispatched to worker |
 | `model_selection` | Level resolved to model ID |
 | `work_finish` | Task completed |
-| `work_heartbeat` | Heartbeat tick completed |
+| `work_heartbeat` | Heartbeat tick completed (background service) |
 | `task_create` | Issue created |
 | `task_update` | Issue state changed |
 | `task_comment` | Comment added to issue |
-| `status` | Queue status queried |
+| `tasks_status` | Project dashboard queried |
+| `task_list` | Issue list browsed |
 | `health` | Health scan completed |
 | `heartbeat_tick` | Heartbeat service tick (background) |
 | `project_register` | Project registered |

@@ -270,7 +270,7 @@ Change which model powers each level in `workflow.yaml` — see [Configuration](
 | Plugin installation | You (once) | `openclaw plugins install @laurentenhoor/devclaw` |
 | Agent + workspace setup | Plugin (`setup`) | Creates agent, configures models, writes workspace files |
 | Channel binding migration | Plugin (`setup` with `migrateFrom`) | Automatically moves channel-wide bindings between agents |
-| Label setup | Plugin (`project_register`) | 11 labels, created idempotently via IssueProvider |
+| Label setup | Plugin (`project_register`) | State labels, created idempotently via IssueProvider |
 | Prompt file scaffolding | Plugin (`project_register`) | Creates `devclaw/projects/<project>/prompts/<role>.md` for each role |
 | Project registration | Plugin (`project_register`) | Entry in `projects.json` with empty worker state |
 | Telegram group setup | You (once per project) | Add bot to group |
@@ -281,7 +281,7 @@ Change which model powers each level in `workflow.yaml` — see [Configuration](
 | Session management | Plugin | Creates, reuses, and dispatches to sessions via CLI. Agent never touches session tools. |
 | Task completion | Plugin (`work_finish`) | Workers self-report. Scheduler dispatches next role. |
 | Role instructions | Plugin (bootstrap hook) | Injected into worker sessions via `agent:bootstrap` hook at session startup |
-| Review polling | Plugin (heartbeat) | Auto-merges and advances "In Review" issues when PR is approved |
+| Review polling | Plugin (heartbeat) | Auto-merges and advances "To Review" issues when PR is approved |
 | Config validation | Plugin | Zod schemas validate `workflow.yaml` at load time |
 | Audit logging | Plugin | Automatic NDJSON append per tool call |
 | Zombie detection | Plugin | `health` checks active vs alive |

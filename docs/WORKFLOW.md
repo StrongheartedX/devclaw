@@ -18,6 +18,10 @@ Human review, no test phase. Approved PRs are auto-merged and the issue is close
 stateDiagram-v2
     [*] --> Planning
     Planning --> ToDo: Ready for development
+    Planning --> ToResearch: Needs investigation
+    ToResearch --> Researching: Architect picks up
+    Researching --> Planning: Architect done (findings posted)
+    Researching --> Refining: Architect blocked
     ToDo --> Doing: DEV picks up
     Doing --> ToReview: DEV done (opens PR)
     Doing --> Refining: DEV blocked
@@ -45,6 +49,22 @@ workflow:
       color: "#95a5a6"
       on:
         APPROVE: todo
+    toResearch:
+      type: queue
+      role: architect
+      label: To Research
+      color: "#0075ca"
+      priority: 1
+      on:
+        PICKUP: researching
+    researching:
+      type: active
+      role: architect
+      label: Researching
+      color: "#4a90e2"
+      on:
+        COMPLETE: planning
+        BLOCKED: refining
     todo:
       type: queue
       role: developer
@@ -109,7 +129,7 @@ workflow:
         APPROVE: todo
 ```
 
-Note: The architect role has no dedicated states in the main pipeline. Design tasks are triggered via the `research_task` tool — issues go directly to Planning.
+The architect role has dedicated `To Research` and `Researching` states. Design tasks are triggered via the `research_task` tool, which creates an issue and transitions it through `To Research` → `Researching`. The architect posts findings as comments, creates implementation tasks in Planning, and completes with `work_finish`.
 
 ### State Types
 
@@ -381,5 +401,5 @@ Call the `workflow_guide` tool for interactive documentation. It returns compreh
 ## Related
 
 - [Configuration](CONFIGURATION.md) — Config file format, roles, timeouts, `openclaw.json`
-- [Tools Reference](TOOLS.md) — All 15 tools including `work_start`, `work_finish`, `task_list`, `workflow_guide`
+- [Tools Reference](TOOLS.md) — All 16 tools including `work_start`, `work_finish`, `task_list`, `workflow_guide`
 - [Architecture](ARCHITECTURE.md) — System design, session model, heartbeat internals
