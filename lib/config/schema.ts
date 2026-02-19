@@ -54,7 +54,6 @@ const TimeoutConfigSchema = z.object({
   dispatchMs: z.number().positive().optional(),
   staleWorkerHours: z.number().positive().optional(),
   sessionContextBudget: z.number().min(0).max(1).optional(),
-  sessionMaxTasks: z.number().int().nonnegative().optional(),
 }).optional();
 
 export const DevClawConfigSchema = z.object({

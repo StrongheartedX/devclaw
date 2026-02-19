@@ -166,7 +166,6 @@ export async function dispatchTask(
     if (shouldClear) {
       await updateWorker(workspaceDir, project.slug, role, {
         sessions: { [level]: null },
-        taskCount: 0,
       });
       existingSessionKey = null;
     }
@@ -291,12 +290,11 @@ export async function dispatchTask(
 // ---------------------------------------------------------------------------
 
 /**
- * Determine whether a session should be cleared based on context budget and task count.
+ * Determine whether a session should be cleared based on context budget.
  *
  * Rules:
  * - If same issue (feedback cycle), keep session — worker needs prior context
  * - If context ratio exceeds sessionContextBudget, clear
- * - If sessionMaxTasks > 0 and taskCount >= sessionMaxTasks, clear
  */
 async function shouldClearSession(
   sessionKey: string,
@@ -309,18 +307,6 @@ async function shouldClearSession(
   // Don't clear if re-dispatching for the same issue (feedback cycle)
   if (worker.issueId && String(newIssueId) === String(worker.issueId)) {
     return false;
-  }
-
-  // Check task count limit
-  if (timeouts.sessionMaxTasks > 0 && (worker.taskCount ?? 0) >= timeouts.sessionMaxTasks) {
-    await auditLog(workspaceDir, "session_budget_reset", {
-      project: projectName,
-      sessionKey,
-      reason: "task_count",
-      taskCount: worker.taskCount,
-      limit: timeouts.sessionMaxTasks,
-    });
-    return true;
   }
 
   // Check context budget via gateway session data
@@ -402,20 +388,12 @@ async function recordWorkerState(
   workspaceDir: string, slug: string, role: string,
   opts: { issueId: number; level: string; sessionKey: string; sessionAction: "spawn" | "send"; fromLabel?: string },
 ): Promise<void> {
-  // Read current worker to get taskCount for incrementing
-  const { readProjects, getWorker: getW } = await import("./projects.js");
-  const data = await readProjects(workspaceDir);
-  const proj = data.projects[slug];
-  const currentWorker = proj ? getW(proj, role) : null;
-  const currentTaskCount = currentWorker?.taskCount ?? 0;
-
   await activateWorker(workspaceDir, slug, role, {
     issueId: String(opts.issueId),
     level: opts.level,
     sessionKey: opts.sessionKey,
     startTime: new Date().toISOString(),
     previousLabel: opts.fromLabel,
-    taskCount: (opts.sessionAction === "spawn" ? 0 : currentTaskCount) + 1,
   });
 }
 

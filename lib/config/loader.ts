@@ -155,7 +155,6 @@ function resolve(config: DevClawConfig): ResolvedConfig {
     dispatchMs: config.timeouts?.dispatchMs ?? 600_000,
     staleWorkerHours: config.timeouts?.staleWorkerHours ?? 2,
     sessionContextBudget: config.timeouts?.sessionContextBudget ?? 0.6,
-    sessionMaxTasks: config.timeouts?.sessionMaxTasks ?? 0,
   };
 
   return { roles, workflow, timeouts };

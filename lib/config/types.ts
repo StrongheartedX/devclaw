@@ -30,8 +30,6 @@ export type TimeoutConfig = {
   staleWorkerHours?: number;
   /** Context budget ratio (0-1). Clear session when context exceeds this fraction of the context window. Default: 0.6 */
   sessionContextBudget?: number;
-  /** Max tasks per session before clearing. Default: undefined (no limit) */
-  sessionMaxTasks?: number;
 };
 
 /**
@@ -55,8 +53,6 @@ export type ResolvedTimeouts = {
   staleWorkerHours: number;
   /** Context budget ratio (0-1). Clear session when context exceeds this fraction of the context window. Default: 0.6 */
   sessionContextBudget: number;
-  /** Max tasks per session before clearing. Default: 0 (no limit) */
-  sessionMaxTasks: number;
 };
 
 /**
