@@ -269,6 +269,22 @@ export class TestProvider implements IssueProvider {
     return [];
   }
 
+  async reactToIssue(_issueId: number, _emoji: string): Promise<void> {
+    // no-op in test provider
+  }
+
+  async issueHasReaction(_issueId: number, _emoji: string): Promise<boolean> {
+    return true; // test provider assumes all issues are "new style"
+  }
+
+  async reactToPr(_issueId: number, _emoji: string): Promise<void> {
+    // no-op in test provider
+  }
+
+  async prHasReaction(_issueId: number, _emoji: string): Promise<boolean> {
+    return true; // test provider assumes all PRs are "new style"
+  }
+
   async reactToIssueComment(_issueId: number, _commentId: number, _emoji: string): Promise<void> {
     // no-op in test provider
   }

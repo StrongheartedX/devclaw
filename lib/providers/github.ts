@@ -481,6 +481,49 @@ export class GitHubProvider implements IssueProvider {
     await this.gh(["issue", "comment", String(issueId), "--body", body]);
   }
 
+  async reactToIssue(issueId: number, emoji: string): Promise<void> {
+    try {
+      await this.gh([
+        "api", `repos/:owner/:repo/issues/${issueId}/reactions`,
+        "--method", "POST",
+        "--field", `content=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
+  async issueHasReaction(issueId: number, emoji: string): Promise<boolean> {
+    try {
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${issueId}/reactions`]);
+      const reactions = JSON.parse(raw) as Array<{ content: string }>;
+      return reactions.some((r) => r.content === emoji);
+    } catch { return false; }
+  }
+
+  async reactToPr(issueId: number, emoji: string): Promise<void> {
+    try {
+      // GitHub PRs are also issues — use the same reactions API with the PR number
+      type OpenPr = { title: string; body: string; headRefName: string; number: number };
+      const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
+      if (prs.length === 0) return;
+      await this.gh([
+        "api", `repos/:owner/:repo/issues/${prs[0].number}/reactions`,
+        "--method", "POST",
+        "--field", `content=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
+  async prHasReaction(issueId: number, emoji: string): Promise<boolean> {
+    try {
+      type OpenPr = { title: string; body: string; headRefName: string; number: number };
+      const prs = await this.findPrsForIssue<OpenPr>(issueId, "open", "title,body,headRefName,number");
+      if (prs.length === 0) return false;
+      const raw = await this.gh(["api", `repos/:owner/:repo/issues/${prs[0].number}/reactions`]);
+      const reactions = JSON.parse(raw) as Array<{ content: string }>;
+      return reactions.some((r) => r.content === emoji);
+    } catch { return false; }
+  }
+
   async reactToIssueComment(_issueId: number, commentId: number, emoji: string): Promise<void> {
     try {
       await this.gh([

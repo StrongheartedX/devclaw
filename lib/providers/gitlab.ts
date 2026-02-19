@@ -369,6 +369,48 @@ export class GitLabProvider implements IssueProvider {
    * @param commentId  The note ID on the MR
    * @param emoji  Emoji name without colons (e.g. "robot", "thumbsup")
    */
+  async reactToIssue(issueId: number, emoji: string): Promise<void> {
+    try {
+      await this.glab([
+        "api", `projects/:id/issues/${issueId}/award_emoji`,
+        "--method", "POST",
+        "--field", `name=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
+  async issueHasReaction(issueId: number, emoji: string): Promise<boolean> {
+    try {
+      const raw = await this.glab(["api", `projects/:id/issues/${issueId}/award_emoji`]);
+      const emojis = JSON.parse(raw) as Array<{ name: string }>;
+      return emojis.some((e) => e.name === emoji);
+    } catch { return false; }
+  }
+
+  async reactToPr(issueId: number, emoji: string): Promise<void> {
+    try {
+      const mrs = await this.getRelatedMRs(issueId);
+      const open = mrs.find((mr) => mr.state === "opened");
+      if (!open) return;
+      await this.glab([
+        "api", `projects/:id/merge_requests/${open.iid}/award_emoji`,
+        "--method", "POST",
+        "--field", `name=${emoji}`,
+      ]);
+    } catch { /* best-effort */ }
+  }
+
+  async prHasReaction(issueId: number, emoji: string): Promise<boolean> {
+    try {
+      const mrs = await this.getRelatedMRs(issueId);
+      const open = mrs.find((mr) => mr.state === "opened");
+      if (!open) return false;
+      const raw = await this.glab(["api", `projects/:id/merge_requests/${open.iid}/award_emoji`]);
+      const emojis = JSON.parse(raw) as Array<{ name: string }>;
+      return emojis.some((e) => e.name === emoji);
+    } catch { return false; }
+  }
+
   async reactToIssueComment(issueId: number, commentId: number, emoji: string): Promise<void> {
     try {
       await this.glab([

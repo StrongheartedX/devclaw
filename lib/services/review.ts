@@ -55,6 +55,12 @@ export async function reviewPass(opts: {
       const routing = detectStepRouting(issue.labels, "review");
       if (routing !== "human") continue;
 
+      // Only process issues managed by DevClaw (marked with 👀 on issue body).
+      // Old-style issues without the marker are skipped to prevent false triggers
+      // from historical comments.
+      const isManaged = await provider.issueHasReaction(issue.iid, "eyes");
+      if (!isManaged) continue;
+
       const status = await provider.getPrStatus(issue.iid);
 
       // Fallback: no PR found, but work may have been committed directly to base branch.

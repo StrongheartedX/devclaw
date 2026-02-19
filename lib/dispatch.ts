@@ -193,7 +193,9 @@ export async function dispatchTask(
     comments, resolvedRole, prContext, prFeedback,
   });
 
-  // Mark all consumed comments as seen (fire-and-forget)
+  // Mark issue + PR as managed and all consumed comments as seen (fire-and-forget)
+  provider.reactToIssue(issueId, EYES_EMOJI).catch(() => {});
+  provider.reactToPr(issueId, EYES_EMOJI).catch(() => {});
   acknowledgeComments(provider, issueId, comments, prFeedback).catch(() => {});
 
   // Step 1: Transition label (this is the commitment point)

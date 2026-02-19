@@ -109,6 +109,28 @@ export interface IssueProvider {
    * Add an emoji reaction to an issue comment by its comment ID.
    * Best-effort — implementations should not throw.
    */
+  /**
+   * Add an emoji reaction to the issue body itself (not a comment).
+   * Used to mark issues as "managed by DevClaw" — presence of 👀 on the
+   * issue body distinguishes new-style issues from legacy ones.
+   * Best-effort — implementations should not throw.
+   */
+  reactToIssue(issueId: number, emoji: string): Promise<void>;
+  /**
+   * Check if the issue body has a specific emoji reaction.
+   * Returns false on error (best-effort).
+   */
+  issueHasReaction(issueId: number, emoji: string): Promise<boolean>;
+  /**
+   * Add an emoji reaction to the PR/MR body linked to an issue.
+   * Best-effort — implementations should not throw.
+   */
+  reactToPr(issueId: number, emoji: string): Promise<void>;
+  /**
+   * Check if the PR/MR linked to an issue has a specific emoji reaction.
+   * Returns false on error (best-effort).
+   */
+  prHasReaction(issueId: number, emoji: string): Promise<boolean>;
   reactToIssueComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   reactToPrComment(issueId: number, commentId: number, emoji: string): Promise<void>;
   /**
